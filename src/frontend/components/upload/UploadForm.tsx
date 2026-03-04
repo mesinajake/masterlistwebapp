@@ -78,7 +78,9 @@ export function UploadForm({ onUpload, onCancel, isUploading, uploadProgress }: 
                   {selectedFile.name}
                 </p>
                 <p className="text-xs text-text-secondary-light dark:text-text-secondary-dark">
-                  {(selectedFile.size / 1024).toFixed(1)} KB
+                  {selectedFile.size >= 1024 * 1024
+                    ? `${(selectedFile.size / (1024 * 1024)).toFixed(1)} MB`
+                    : `${(selectedFile.size / 1024).toFixed(1)} KB`}
                 </p>
               </div>
             </div>

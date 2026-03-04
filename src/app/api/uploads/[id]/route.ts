@@ -2,9 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { requireDA, isPayload } from "@/backend/lib/auth/middleware";
 import { queryOne, execute, getClient } from "@/backend/lib/db";
 import { removeFiles } from "@/backend/lib/storage";
-
-const UUID_RE =
-  /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+import { isValidUUID } from "@/shared/utils/validators";
 
 /** Batch size for chunked row deletion (avoids giant single-transaction locks). */
 const DELETE_BATCH_SIZE = 50_000;
@@ -25,7 +23,7 @@ export async function DELETE(
 
   const uploadId = params.id;
 
-  if (!UUID_RE.test(uploadId)) {
+  if (!isValidUUID(uploadId)) {
     return NextResponse.json(
       { error: "BAD_REQUEST", message: "Invalid upload ID format" },
       { status: 400 }

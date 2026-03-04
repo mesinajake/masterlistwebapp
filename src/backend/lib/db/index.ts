@@ -152,3 +152,57 @@ export async function closePool(): Promise<void> {
     _pool = null;
   }
 }
+
+// ── Graceful shutdown ─────────────────────────────────────
+
+// Register shutdown handlers to drain the pool on process exit.
+// This prevents orphaned in-flight queries when the server stops.
+if (typeof process !== "undefined") {
+  const shutdown = async (signal: string) => {
+    console.log(`[db] Received ${signal}, draining pool...`);
+    await closePool();
+    process.exit(0);
+  };
+  process.on("SIGTERM", () => shutdown("SIGTERM"));
+  process.on("SIGINT", () => shutdown("SIGINT"));
+}
+
+// ── Startup health checks ─────────────────────────────────
+
+let _healthCheckDone = false;
+
+/**
+ * Run startup health checks on first use.
+ * - Ensures search trigger is enabled (fixes crash-recovery state)
+ * - Cleans orphaned staging table data
+ * Runs once, then no-ops on subsequent calls.
+ */
+export async function runStartupHealthChecks(): Promise<void> {
+  if (_healthCheckDone) return;
+  _healthCheckDone = true;
+
+  try {
+    // C-3: Ensure search trigger is enabled (may have been left disabled by crash)
+    const pool = getPool();
+    const triggerResult = await pool.query(
+      "SELECT ensure_search_trigger_enabled() AS enabled"
+    );
+    const enabled = triggerResult.rows[0]?.enabled;
+    if (enabled) {
+      console.log("[db:health] Search trigger verified as enabled");
+    } else {
+      console.warn("[db:health] Search trigger not found — search may not work");
+    }
+
+    // M-5: Clean orphaned staging rows (left behind by server crashes during upload)
+    const cleanResult = await pool.query(
+      "DELETE FROM master_list_rows_staging WHERE TRUE"
+    );
+    if ((cleanResult.rowCount ?? 0) > 0) {
+      console.log(`[db:health] Cleaned ${cleanResult.rowCount} orphaned staging rows`);
+    }
+  } catch (err) {
+    // Non-fatal — log and continue
+    console.error("[db:health] Startup health check failed:", err);
+  }
+}

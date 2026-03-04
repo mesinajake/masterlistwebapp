@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server";
 import { getSession } from "@/backend/lib/auth/session";
-import { queryOne } from "@/backend/lib/db";
+import { queryOne, runStartupHealthChecks } from "@/backend/lib/db";
 import { toUser, type UserRow } from "@/shared/types/user";
 
 /**
@@ -8,6 +8,9 @@ import { toUser, type UserRow } from "@/shared/types/user";
  * Return the current authenticated user's profile.
  */
 export async function GET() {
+  // Run startup health checks on first request (no-ops afterward)
+  await runStartupHealthChecks();
+
   try {
     const session = await getSession();
     if (!session) {

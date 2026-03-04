@@ -18,6 +18,7 @@ export async function GET(request: NextRequest) {
     const rawPageSize = Number(searchParams.get("pageSize")) || DEFAULT_PAGE_SIZE;
     const page = Math.max(1, rawPage);
     const pageSize = Math.min(MAX_PAGE_SIZE, Math.max(1, rawPageSize));
+    const sortBy = searchParams.get("sortBy") || "";
     const sortOrder = searchParams.get("sortOrder") === "desc" ? "desc" : "asc";
 
     // Parse column filters — supports both:
@@ -55,15 +56,20 @@ export async function GET(request: NextRequest) {
       }
     }
 
-    // Get the active upload (include column_headers for array→object reconstruction)
+    // Get the active upload with uploader name (single JOIN instead of two queries)
     const { data: activeUpload } = await queryOne<{
       id: string;
       created_at: string;
       uploaded_by: string;
       column_headers: string[];
       row_count: number;
+      uploader_name: string | null;
     }>(
-      "SELECT id, created_at, uploaded_by, column_headers, row_count FROM master_list_uploads WHERE is_active = true",
+      `SELECT u.id, u.created_at, u.uploaded_by, u.column_headers, u.row_count,
+              usr.name AS uploader_name
+       FROM master_list_uploads u
+       LEFT JOIN users usr ON usr.id = u.uploaded_by
+       WHERE u.is_active = true`,
       []
     );
 
@@ -74,12 +80,6 @@ export async function GET(request: NextRequest) {
         meta: { uploadId: null, uploadedAt: null, uploadedBy: null },
       });
     }
-
-    // Get uploader name
-    const { data: uploader } = await queryOne<{ name: string }>(
-      "SELECT name FROM users WHERE id = $1",
-      [activeUpload.uploaded_by]
-    );
 
     const offset = (page - 1) * pageSize;
     const columnHeaders = activeUpload.column_headers ?? [];
@@ -141,6 +141,17 @@ export async function GET(request: NextRequest) {
     } else {
       // Simple paginated query — no filter/search.
       const orderDir = sortOrder === "asc" ? "ASC" : "DESC";
+
+      // Resolve sort expression: column name → JSONB index or default row_index
+      let orderExpr = `row_index ${orderDir}`;
+      if (sortBy && columnHeaders.length > 0) {
+        const colIdx = columnHeaders.indexOf(sortBy);
+        if (colIdx >= 0) {
+          // Sort by JSONB array element: data->>index (text comparison)
+          orderExpr = `data->>${colIdx} ${orderDir} NULLS LAST, row_index ASC`;
+        }
+      }
+
       const { data: qRows, error } = await query<{
         id: string;
         row_index: number;
@@ -148,7 +159,7 @@ export async function GET(request: NextRequest) {
       }>(
         `SELECT id, row_index, data FROM master_list_rows
          WHERE upload_id = $1
-         ORDER BY row_index ${orderDir}
+         ORDER BY ${orderExpr}
          LIMIT $2 OFFSET $3`,
         [activeUpload.id, pageSize, offset]
       );
@@ -176,7 +187,7 @@ export async function GET(request: NextRequest) {
       meta: {
         uploadId: activeUpload.id,
         uploadedAt: activeUpload.created_at,
-        uploadedBy: uploader?.name ?? "Unknown",
+        uploadedBy: activeUpload.uploader_name ?? "Unknown",
       },
     });
   } catch (error) {

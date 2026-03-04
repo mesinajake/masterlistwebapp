@@ -103,16 +103,8 @@ export function useUpload() {
         }
       }
 
-      const formData = new FormData();
-      // Append the file (CSV or original Excel) with the appropriate name
-      formData.append("file", uploadFile, uploadFileName);
-      if (password) {
-        formData.append("password", password);
-      }
-
       // Generate idempotency token to prevent duplicate submissions
       const idempotencyToken = crypto.randomUUID();
-      formData.append("idempotencyToken", idempotencyToken);
 
       // Retry with exponential backoff on network errors only
       const MAX_RETRIES = 3;
@@ -126,8 +118,9 @@ export function useUpload() {
 
         try {
           // Re-create FormData for retries (streams can't be re-read)
+          // Use uploadFile/uploadFileName (may be client-parsed CSV)
           const retryFormData = new FormData();
-          retryFormData.append("file", file);
+          retryFormData.append("file", uploadFile, uploadFileName);
           if (password) retryFormData.append("password", password);
           retryFormData.append("idempotencyToken", idempotencyToken);
 

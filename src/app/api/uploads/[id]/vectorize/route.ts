@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { requireDA, isPayload } from "@/backend/lib/auth/middleware";
 import { execute, rpc, queryOne } from "@/backend/lib/db";
+import { isValidUUID } from "@/shared/utils/validators";
 
 // ─── Constants ────────────────────────────────────────
 const SV_BATCH_SIZE = 50_000;
@@ -41,8 +42,7 @@ export async function POST(
 
   const uploadId = params.id;
 
-  const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
-  if (!UUID_RE.test(uploadId)) {
+  if (!isValidUUID(uploadId)) {
     return NextResponse.json(
       { error: "BAD_REQUEST", message: "Invalid upload ID" },
       { status: 400 }
@@ -203,6 +203,13 @@ export async function GET(
   if (!isPayload(authResult)) return authResult;
 
   const uploadId = params.id;
+
+  if (!isValidUUID(uploadId)) {
+    return NextResponse.json(
+      { error: "BAD_REQUEST", message: "Invalid upload ID" },
+      { status: 400 }
+    );
+  }
 
   const { data: upload, error } = await queryOne<{
     vector_status: string;

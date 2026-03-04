@@ -2,6 +2,7 @@
 
 import { useCallback, useState } from "react";
 import { useSearchStore } from "@/frontend/stores/searchStore";
+import { toast } from "sonner";
 
 export function useExport() {
   const [isExporting, setIsExporting] = useState(false);
@@ -38,6 +39,8 @@ export function useExport() {
       a.click();
       document.body.removeChild(a);
       URL.revokeObjectURL(url);
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : "Export failed");
     } finally {
       setIsExporting(false);
     }

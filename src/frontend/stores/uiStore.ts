@@ -15,7 +15,9 @@ interface UIState {
 }
 
 export const useUIStore = create<UIState>((set) => ({
-  theme: "system",
+  theme: (typeof window !== "undefined"
+    ? (localStorage.getItem("ml-theme") as Theme) ?? "system"
+    : "system"),
   sidebarOpen: false,
   modalOpen: null,
 

@@ -25,9 +25,6 @@ export const SEARCH_DEBOUNCE_MS = 300;
 /** Number of rows to preview after parsing */
 export const PREVIEW_ROW_COUNT = 10;
 
-/** Batch size for inserting rows into DB (keep small for large JSONB payloads) */
-export const INSERT_BATCH_SIZE = 200;
-
 /** Maximum number of rows allowed in a single Excel upload */
 export const MAX_UPLOAD_ROWS = 500_000;
 

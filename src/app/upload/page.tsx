@@ -40,16 +40,11 @@ function UploadContent() {
 
   // If preview becomes available while the user is on the page
   // (e.g. upload completes in background), auto-advance to preview.
+  // Auto-advance to preview when upload completes in background
+  // (no toast here — the onSuccess callback handles it)
   useEffect(() => {
     if (preview && step === "upload" && !isUploading) {
       setStep("preview");
-      toast("Upload Complete", {
-        style: {
-          background: "#F0FDF4",
-          border: "1px solid #BBF7D0",
-          color: "#166534",
-        },
-      });
     }
   }, [preview, step, isUploading]);
 

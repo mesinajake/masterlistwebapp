@@ -44,22 +44,22 @@ export function HistoryTable({
         <table className="min-w-full text-left text-sm whitespace-nowrap">
           <thead className="bg-gray-50 dark:bg-surface-dark/50">
             <tr>
-              <th className="border-b border-border-light px-4 py-4 font-semibold text-text-secondary-light dark:border-border-dark dark:text-text-secondary-dark">
+              <th scope="col" className="border-b border-border-light px-4 py-4 font-semibold text-text-secondary-light dark:border-border-dark dark:text-text-secondary-dark">
                 File Name
               </th>
-              <th className="border-b border-border-light px-4 py-4 font-semibold text-text-secondary-light dark:border-border-dark dark:text-text-secondary-dark">
+              <th scope="col" className="border-b border-border-light px-4 py-4 font-semibold text-text-secondary-light dark:border-border-dark dark:text-text-secondary-dark">
                 Rows
               </th>
-              <th className="border-b border-border-light px-4 py-4 font-semibold text-text-secondary-light dark:border-border-dark dark:text-text-secondary-dark">
+              <th scope="col" className="border-b border-border-light px-4 py-4 font-semibold text-text-secondary-light dark:border-border-dark dark:text-text-secondary-dark">
                 Uploaded By
               </th>
-              <th className="border-b border-border-light px-4 py-4 font-semibold text-text-secondary-light dark:border-border-dark dark:text-text-secondary-dark">
+              <th scope="col" className="border-b border-border-light px-4 py-4 font-semibold text-text-secondary-light dark:border-border-dark dark:text-text-secondary-dark">
                 Date
               </th>
-              <th className="border-b border-border-light px-6 py-4 font-semibold text-text-secondary-light dark:border-border-dark dark:text-text-secondary-dark">
+              <th scope="col" className="border-b border-border-light px-6 py-4 font-semibold text-text-secondary-light dark:border-border-dark dark:text-text-secondary-dark">
                 Status
               </th>
-              <th className="border-b border-border-light px-6 py-4 font-semibold text-text-secondary-light dark:border-border-dark dark:text-text-secondary-dark">
+              <th scope="col" className="border-b border-border-light px-6 py-4 font-semibold text-text-secondary-light dark:border-border-dark dark:text-text-secondary-dark">
                 Action
               </th>
             </tr>
@@ -110,6 +110,7 @@ export function HistoryTable({
                           onClick={() => onActivate(upload.id)}
                           isLoading={isActivating === upload.id}
                           disabled={isActivating !== null || isDeletingId !== null}
+                          aria-label={`Activate ${upload.fileName}`}
                         >
                           Activate
                         </Button>
@@ -121,6 +122,7 @@ export function HistoryTable({
                             isLoading={isDeletingId === upload.id}
                             disabled={isActivating !== null || isDeletingId !== null}
                             className="text-red-500 hover:text-red-700 hover:bg-red-50 dark:hover:bg-red-900/20"
+                            aria-label={`Delete ${upload.fileName}`}
                           >
                             Delete
                           </Button>

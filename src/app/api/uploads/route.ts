@@ -8,6 +8,7 @@ import { AppError } from "@/backend/lib/utils/errors";
 import {
   MAX_UPLOAD_SIZE,
   PREVIEW_ROW_COUNT,
+  ACCEPTED_EXTENSIONS,
 } from "@/shared/utils/constants";
 import { uploadRateLimiter } from "@/backend/lib/security/rate-limit";
 import {
@@ -82,6 +83,18 @@ export async function POST(request: NextRequest) {
       {
         error: "BAD_REQUEST",
         message: `File too large. Maximum: ${MAX_UPLOAD_SIZE / (1024 * 1024)} MB`,
+      },
+      { status: 400 }
+    );
+  }
+
+  // Validate file extension
+  const fileExt = file.name.toLowerCase().match(/\.[^.]+$/)?.[0] ?? "";
+  if (!ACCEPTED_EXTENSIONS.includes(fileExt)) {
+    return NextResponse.json(
+      {
+        error: "BAD_REQUEST",
+        message: `Invalid file type "${fileExt}". Accepted: ${ACCEPTED_EXTENSIONS.join(", ")}`,
       },
       { status: 400 }
     );

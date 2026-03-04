@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { requireSuperAdmin, isPayload } from "@/backend/lib/auth/middleware";
 import { query, execute } from "@/backend/lib/db";
 import type { UserRole } from "@/shared/types/user";
+import { isValidUUID } from "@/shared/utils/validators";
 
 const VALID_ROLES: UserRole[] = ["super_admin", "da", "agent"];
 
@@ -34,8 +35,6 @@ export async function GET(request: NextRequest) {
   return NextResponse.json({ data });
 }
 
-const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
-
 /** PATCH /api/admin/users — Change a user's role (super_admin only) */
 export async function PATCH(request: NextRequest) {
   const auth = await requireSuperAdmin(request);
@@ -52,7 +51,7 @@ export async function PATCH(request: NextRequest) {
   }
 
   // H-7 fix: Validate UUID format
-  if (!UUID_RE.test(userId)) {
+  if (!isValidUUID(userId)) {
     return NextResponse.json(
       { error: "INVALID_INPUT", message: "Invalid userId format" },
       { status: 400 }

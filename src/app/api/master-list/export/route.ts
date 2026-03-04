@@ -1,12 +1,15 @@
 import { NextRequest, NextResponse } from "next/server";
 import { requireAuth, isPayload } from "@/backend/lib/auth/middleware";
-import { queryOne, query, rpc } from "@/backend/lib/db";
-import { rowsToCSV } from "@/backend/lib/csv/exporter";
+import { queryOne, rpc, getClient } from "@/backend/lib/db";
+import { csvHeaderLine, rowToCSVLine } from "@/backend/lib/csv/exporter";
 import { MAX_EXPORT_ROWS } from "@/shared/utils/constants";
+import type { PoolClient } from "pg";
+import Cursor from "pg-cursor";
 
 /**
  * GET /api/master-list/export
- * Export filtered/searched results as a CSV download.
+ * Export filtered/searched results as a streaming CSV download.
+ * Uses a database cursor to avoid loading all rows into memory.
  */
 export async function GET(request: NextRequest) {
   const authResult = await requireAuth(request);
@@ -16,12 +19,8 @@ export async function GET(request: NextRequest) {
     const { searchParams } = request.nextUrl;
     const q = searchParams.get("search") || searchParams.get("q") || "";
 
-    // Parse column filters — supports both:
-    //   ?filter=column:value&filter=column2:value2    (from frontend)
-    //   ?filters={"column":"value"}                   (legacy JSON)
+    // Parse column filters
     const filters: Record<string, string> = {};
-
-    // Parse modern format: ?filter=col:val
     const filterParams = searchParams.getAll("filter");
     for (const fp of filterParams) {
       const colonIdx = fp.indexOf(":");
@@ -71,10 +70,8 @@ export async function GET(request: NextRequest) {
     const hasFilters = Object.keys(filters).length > 0;
     const hasSearch = q.trim().length > 0;
 
-    let exportRows: { data: unknown }[];
-
+    // ── Filtered/searched export: use RPC (bounded by MAX_EXPORT_ROWS) ──
     if (hasFilters || hasSearch) {
-      // Use RPC for filtered/searched queries (60 s timeout)
       const { data: rpcResult, error: rpcError } = await rpc<{
         total: number;
         rows: { id: string; row_index: number; data: unknown }[];
@@ -99,50 +96,85 @@ export async function GET(request: NextRequest) {
       }
 
       const result = rpcResult as { total: number; rows: { id: string; row_index: number; data: unknown }[] };
-      exportRows = (result?.rows ?? []).map((r) => ({ data: r.data }));
-    } else {
-      // Simple export — no filter/search
-      const { data: rows, error } = await query<{ data: unknown }>(
-        `SELECT data FROM master_list_rows
-         WHERE upload_id = $1
-         ORDER BY row_index ASC
-         LIMIT $2`,
-        [activeUpload.id, MAX_EXPORT_ROWS]
-      );
+      const exportRows = result?.rows ?? [];
 
-      if (error) {
-        console.error("Export query error:", error);
-        return NextResponse.json(
-          { error: "QUERY_ERROR", message: "Failed to export data" },
-          { status: 500 }
-        );
+      // For filtered results (typically smaller), build CSV in memory
+      const lines: string[] = [csvHeaderLine(colHeaders)];
+      for (const row of exportRows) {
+        lines.push(rowToCSVLine(colHeaders, row.data));
       }
 
-      exportRows = (rows ?? []) as { data: unknown }[];
+      return new NextResponse(lines.join("\r\n"), {
+        status: 200,
+        headers: {
+          "Content-Type": "text/csv; charset=utf-8",
+          "Content-Disposition": `attachment; filename="masterlist_export_${Date.now()}.csv"`,
+        },
+      });
     }
 
-    const headers = colHeaders;
+    // ── Unfiltered export: stream via cursor to avoid OOM ──
+    const client: PoolClient = await getClient();
+    const CURSOR_BATCH = 5_000;
+    let released = false;
 
-    // Reconstruct named objects from array-format data for CSV export
-    const namedRows = exportRows.map((r) => {
-      const rawData = r.data;
-      if (Array.isArray(rawData)) {
-        const obj: Record<string, unknown> = {};
-        headers.forEach((h, i) => {
-          obj[h] = (rawData as unknown[])[i] ?? null;
-        });
-        return obj;
-      }
-      return rawData as Record<string, unknown>;
+    const stream = new ReadableStream({
+      async start(controller) {
+        try {
+          // Send CSV header with BOM
+          controller.enqueue(new TextEncoder().encode(csvHeaderLine(colHeaders) + "\r\n"));
+
+          const cursor = client.query(
+            new Cursor(
+              `SELECT data FROM master_list_rows
+               WHERE upload_id = $1
+               ORDER BY row_index ASC`,
+              [activeUpload.id]
+            )
+          );
+
+          let totalSent = 0;
+
+          // eslint-disable-next-line no-constant-condition
+          while (true) {
+            const rows: { data: unknown }[] = await cursor.read(CURSOR_BATCH);
+            if (rows.length === 0) break;
+
+            const chunk = rows
+              .map((r) => rowToCSVLine(colHeaders, r.data))
+              .join("\r\n");
+            controller.enqueue(new TextEncoder().encode(chunk + "\r\n"));
+
+            totalSent += rows.length;
+            if (totalSent >= MAX_EXPORT_ROWS) break;
+          }
+
+          await cursor.close();
+          controller.close();
+        } catch (err) {
+          console.error("Export stream error:", err);
+          controller.error(err);
+        } finally {
+          if (!released) {
+            released = true;
+            client.release();
+          }
+        }
+      },
+      cancel() {
+        if (!released) {
+          released = true;
+          client.release();
+        }
+      },
     });
 
-    const csvData = rowsToCSV(headers, namedRows);
-
-    return new NextResponse(csvData, {
+    return new NextResponse(stream, {
       status: 200,
       headers: {
         "Content-Type": "text/csv; charset=utf-8",
         "Content-Disposition": `attachment; filename="masterlist_export_${Date.now()}.csv"`,
+        "Transfer-Encoding": "chunked",
       },
     });
   } catch (error) {
