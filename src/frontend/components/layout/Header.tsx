@@ -6,10 +6,13 @@ import { UserMenu } from "./UserMenu";
 import { Button } from "@/frontend/components/ui";
 import { useAuthStore } from "@/frontend/stores/authStore";
 import { useSearchStore } from "@/frontend/stores/searchStore";
+import { useUploadStore } from "@/frontend/stores/uploadStore";
 
 export function Header() {
   const { user } = useAuthStore();
   const setQuery = useSearchStore((s) => s.setQuery);
+  const uploadProgress = useUploadStore((s) => s.progress);
+  const isUploadActive = useUploadStore((s) => s.isUploading);
   const isDAOrAbove = user?.role === "da" || user?.role === "super_admin";
   const isSuperAdmin = user?.role === "super_admin";
 
@@ -64,13 +67,23 @@ export function Header() {
         </nav>
 
         {isDAOrAbove && (
-          <Link href="/upload">
+          <Link href="/upload" className="relative">
             <Button size="md">
               <span className="material-symbols-outlined text-[18px]">
                 upload
               </span>
               <span>Upload</span>
             </Button>
+            {/* Pulsing dot when upload is active in background */}
+            {isUploadActive && (
+              <span
+                className="absolute -top-1 -right-1 flex h-3 w-3"
+                title={uploadProgress?.detail ?? "Upload in progress"}
+              >
+                <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-primary opacity-75" />
+                <span className="relative inline-flex rounded-full h-3 w-3 bg-primary" />
+              </span>
+            )}
           </Link>
         )}
 

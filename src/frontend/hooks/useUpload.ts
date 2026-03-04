@@ -1,7 +1,8 @@
 "use client";
 
-import { useState, useCallback, useRef } from "react";
+import { useCallback } from "react";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
+import { useUploadStore } from "@/frontend/stores/uploadStore";
 import type { UploadPreview, UploadProgress } from "@/shared/types/upload";
 import {
   shouldParseClientSide,
@@ -15,30 +16,37 @@ interface UploadParams {
 
 export function useUpload() {
   const queryClient = useQueryClient();
-  const [preview, setPreview] = useState<UploadPreview | null>(null);
-  const [uploadProgress, setUploadProgress] = useState<UploadProgress | null>(
-    null
-  );
-  const abortControllerRef = useRef<AbortController | null>(null);
-
-  const resetProgress = useCallback(() => setUploadProgress(null), []);
+  const store = useUploadStore();
+  const {
+    progress: uploadProgress,
+    preview,
+    isUploading: storeIsUploading,
+    setProgress,
+    setPreview,
+    setIsUploading,
+    setError,
+    setAbortController,
+    reset: resetStore,
+  } = store;
 
   const cancelUpload = useCallback(() => {
-    if (abortControllerRef.current) {
-      abortControllerRef.current.abort();
-      abortControllerRef.current = null;
+    const ctrl = useUploadStore.getState().abortController;
+    if (ctrl) {
+      ctrl.abort();
     }
-    setUploadProgress(null);
-  }, []);
+    resetStore();
+  }, [resetStore]);
 
   const uploadMutation = useMutation({
     mutationFn: async ({ file, password }: UploadParams) => {
       // Create a new AbortController for this upload
       const controller = new AbortController();
-      abortControllerRef.current = controller;
+      setAbortController(controller);
+      setIsUploading(true);
+      setError(null);
 
       // Reset progress at the start
-      setUploadProgress({ stage: "parsing", progress: 0, detail: "Preparing file..." });
+      setProgress({ stage: "parsing", progress: 0, detail: "Preparing file..." });
 
       // ── Client-side Excel parsing ──────────────────────
       // For Excel files: parse in browser → convert to CSV → upload CSV
@@ -48,7 +56,7 @@ export function useUpload() {
 
       if (shouldParseClientSide(file.name)) {
         try {
-          setUploadProgress({
+          setProgress({
             stage: "parsing",
             progress: 5,
             detail: "Parsing Excel file in browser...",
@@ -58,7 +66,7 @@ export function useUpload() {
             file,
             password,
             (message) => {
-              setUploadProgress({
+              setProgress({
                 stage: "parsing",
                 progress: 10,
                 detail: message,
@@ -78,7 +86,7 @@ export function useUpload() {
             `sheet: "${parseResult.sheetName}", CSV size: ${(parseResult.csvBlob.size / 1024 / 1024).toFixed(1)} MB`
           );
 
-          setUploadProgress({
+          setProgress({
             stage: "parsing",
             progress: 15,
             detail: `Parsed ${parseResult.rowCount.toLocaleString()} rows. Uploading CSV...`,
@@ -87,7 +95,7 @@ export function useUpload() {
           if (err instanceof DOMException && err.name === "AbortError") throw err;
           // Fall back to server-side parsing if client-side fails
           console.warn("[useUpload] Client-side parse failed, falling back to server:", err);
-          setUploadProgress({
+          setProgress({
             stage: "parsing",
             progress: 5,
             detail: "Uploading file for server-side parsing...",
@@ -139,7 +147,7 @@ export function useUpload() {
           lastError = err instanceof Error ? err : new Error(String(err));
           if (attempt < MAX_RETRIES) {
             const delay = Math.min(1000 * Math.pow(2, attempt), 8000); // 1s, 2s, 4s
-            setUploadProgress({
+            setProgress({
               stage: "parsing",
               progress: 0,
               detail: `Network error. Retrying in ${delay / 1000}s... (attempt ${attempt + 2}/${MAX_RETRIES + 1})`,
@@ -190,7 +198,7 @@ export function useUpload() {
               result = event.data as UploadPreview;
             }
 
-            setUploadProgress({
+            setProgress({
               stage: event.stage,
               progress: event.progress,
               detail: event.detail,
@@ -213,20 +221,23 @@ export function useUpload() {
       return result;
     },
     onSuccess: (data) => {
-      abortControllerRef.current = null;
+      setAbortController(null);
+      setIsUploading(false);
       setPreview(data);
       queryClient.invalidateQueries({ queryKey: ["master-list"] });
       queryClient.invalidateQueries({ queryKey: ["columns"] });
       queryClient.invalidateQueries({ queryKey: ["uploads"] });
     },
     onError: (error) => {
-      abortControllerRef.current = null;
+      setAbortController(null);
+      setIsUploading(false);
       // Don't show error state for user-initiated cancellations
       if (error instanceof DOMException && error.name === "AbortError") {
-        setUploadProgress(null);
+        setProgress(null);
         return;
       }
-      setUploadProgress(null);
+      setError(error instanceof Error ? error.message : String(error));
+      setProgress(null);
     },
   });
 
@@ -273,7 +284,7 @@ export function useUpload() {
     setPreview,
     uploadProgress,
     upload: uploadMutation.mutate,
-    isUploading: uploadMutation.isPending,
+    isUploading: storeIsUploading || uploadMutation.isPending,
     uploadError: uploadMutation.error,
     cancelUpload,
     activate: activateMutation.mutate,
@@ -284,8 +295,7 @@ export function useUpload() {
     deleteError: deleteMutation.error,
     reset: () => {
       cancelUpload();
-      setPreview(null);
-      resetProgress();
+      resetStore();
       uploadMutation.reset();
     },
   };

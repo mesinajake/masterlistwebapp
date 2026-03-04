@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { AuthGuard } from "@/frontend/components/auth/AuthGuard";
 import { RoleGuard } from "@/frontend/components/auth/RoleGuard";
 import { Header } from "@/frontend/components/layout/Header";
@@ -32,7 +32,20 @@ function UploadContent() {
     reset,
   } = useUpload();
 
-  const [step, setStep] = useState<"upload" | "preview" | "done">("upload");
+  // Derive initial step from persisted store state so returning
+  // to this page after navigation restores the correct view.
+  const [step, setStep] = useState<"upload" | "preview" | "done">(() =>
+    preview ? "preview" : "upload"
+  );
+
+  // If preview becomes available while the user is on the page
+  // (e.g. upload completes in background), auto-advance to preview.
+  useEffect(() => {
+    if (preview && step === "upload" && !isUploading) {
+      setStep("preview");
+      toast.success("File parsed successfully!");
+    }
+  }, [preview, step, isUploading]);
 
   const handleFileSelect = (file: File, password?: string) => {
     upload({ file, password }, {

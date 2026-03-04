@@ -43,7 +43,6 @@ export function acquireUploadLock(
   }
 
   if (activeUpload) {
-    const elapsedSec = Math.round((now - activeUpload.startedAt) / 1000);
     return {
       acquired: false,
       message:
