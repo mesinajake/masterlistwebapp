@@ -65,8 +65,9 @@ export async function GET(request: NextRequest) {
   );
 
   if (error) {
+    console.error("[admin/activity] GET error:", error.message);
     return NextResponse.json(
-      { error: "DB_ERROR", message: error.message },
+      { error: "DB_ERROR", message: "Failed to fetch activity log" },
       { status: 500 }
     );
   }

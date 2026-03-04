@@ -97,29 +97,23 @@ export async function GET(request: NextRequest) {
         console.error("User update error:", updateError);
       }
     } else {
-      // New user — determine role:
-      // If no users exist at all → super_admin (bootstrap)
-      // Otherwise → agent (must be promoted by super_admin)
-      const { data: userCountRow } = await queryOne<{ count: string }>(
-        "SELECT COUNT(*)::TEXT AS count FROM users",
-        []
-      );
-      const totalUsers = parseInt(userCountRow?.count ?? "0", 10);
-      const assignedRole: UserRole = totalUsers === 0 ? "super_admin" : "agent";
-
+      // C-3 fix: Atomic first-user bootstrap — single INSERT statement
+      // determines role based on existing user count, preventing TOCTOU race.
       const { data: newUser, error: insertError } = await queryOne<{
         id: string;
         role: string;
       }>(
         `INSERT INTO users (lark_user_id, name, email, avatar_url, role)
-         VALUES ($1, $2, $3, $4, $5)
+         VALUES (
+           $1, $2, $3, $4,
+           CASE WHEN (SELECT COUNT(*) FROM users) = 0 THEN 'super_admin' ELSE 'agent' END
+         )
          RETURNING id, role`,
         [
           larkUser.open_id,
           larkUser.name || larkUser.en_name || "Unknown",
           larkUser.email || null,
           larkUser.avatar_url || null,
-          assignedRole,
         ]
       );
 

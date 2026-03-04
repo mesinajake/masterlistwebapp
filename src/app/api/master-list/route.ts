@@ -156,7 +156,7 @@ export async function GET(request: NextRequest) {
       if (error) {
         console.error("Master list query error:", error);
         return NextResponse.json(
-          { error: "QUERY_ERROR", message: error.message },
+          { error: "QUERY_ERROR", message: "Failed to fetch data" },
           { status: 500 }
         );
       }

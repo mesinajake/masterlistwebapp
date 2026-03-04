@@ -47,8 +47,7 @@ export function acquireUploadLock(
     return {
       acquired: false,
       message:
-        `Another upload is already in progress ` +
-        `(file: ${activeUpload.fileName}, started ${elapsedSec}s ago). ` +
+        `Another upload is already in progress. ` +
         `Please wait for it to complete before uploading again.`,
     };
   }

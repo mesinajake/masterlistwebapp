@@ -40,6 +40,8 @@ export async function signJWT(
   return new SignJWT(payload as Record<string, unknown>)
     .setProtectedHeader({ alg: "HS256" })
     .setIssuedAt()
+    .setIssuer("masterlist")
+    .setAudience("masterlist-app")
     .setExpirationTime(`${JWT_EXPIRY_SECONDS}s`)
     .sign(getSecret());
 }
@@ -55,7 +57,10 @@ export async function verifyJWT(
   token: string
 ): Promise<AppJWTPayload | null> {
   try {
-    const { payload } = await jwtVerify(token, getSecret());
+    const { payload } = await jwtVerify(token, getSecret(), {
+      issuer: "masterlist",
+      audience: "masterlist-app",
+    });
     return payload as unknown as AppJWTPayload;
   } catch {
     return null;

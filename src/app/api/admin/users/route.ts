@@ -24,14 +24,17 @@ export async function GET(request: NextRequest) {
   );
 
   if (error) {
+    console.error("[admin/users] GET error:", error.message);
     return NextResponse.json(
-      { error: "DB_ERROR", message: error.message },
+      { error: "DB_ERROR", message: "Failed to fetch users" },
       { status: 500 }
     );
   }
 
   return NextResponse.json({ data });
 }
+
+const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
 /** PATCH /api/admin/users — Change a user's role (super_admin only) */
 export async function PATCH(request: NextRequest) {
@@ -44,6 +47,14 @@ export async function PATCH(request: NextRequest) {
   if (!userId || !role) {
     return NextResponse.json(
       { error: "INVALID_INPUT", message: "userId and role are required" },
+      { status: 400 }
+    );
+  }
+
+  // H-7 fix: Validate UUID format
+  if (!UUID_RE.test(userId)) {
+    return NextResponse.json(
+      { error: "INVALID_INPUT", message: "Invalid userId format" },
       { status: 400 }
     );
   }
@@ -69,8 +80,9 @@ export async function PATCH(request: NextRequest) {
   );
 
   if (error) {
+    console.error("[admin/users] PATCH error:", error.message);
     return NextResponse.json(
-      { error: "DB_ERROR", message: error.message },
+      { error: "DB_ERROR", message: "Failed to update user role" },
       { status: 500 }
     );
   }

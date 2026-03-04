@@ -361,9 +361,9 @@ export async function POST(request: NextRequest) {
       // ── Fire-and-forget: Trigger background vectorization ──
       // This runs independently — the admin has already received "complete".
       // Search works immediately via ILIKE fallback while vectors build.
-      // Uses internal secret for authentication (avoids need for cookie forwarding).
+      // Uses a dedicated internal API secret (never the JWT signing key).
       const appUrl = process.env.NEXT_PUBLIC_APP_URL || "http://localhost:3000";
-      const internalSecret = process.env.JWT_SECRET;
+      const internalSecret = process.env.INTERNAL_API_SECRET;
       fetch(`${appUrl}/api/uploads/${uploadId}/vectorize`, {
         method: "POST",
         headers: {
@@ -482,7 +482,7 @@ export async function GET(request: NextRequest) {
     if (error) {
       console.error("Upload history query error:", error);
       return NextResponse.json(
-        { error: "QUERY_ERROR", message: error.message },
+        { error: "QUERY_ERROR", message: "Failed to fetch upload history" },
         { status: 500 }
       );
     }

@@ -5,8 +5,8 @@ import { execute, rpc, queryOne } from "@/backend/lib/db";
 // ─── Constants ────────────────────────────────────────
 const SV_BATCH_SIZE = 50_000;
 
-// Internal secret for fire-and-forget calls from the upload route
-const INTERNAL_SECRET = process.env.JWT_SECRET;
+// Dedicated internal secret — NEVER reuse the JWT signing key
+const INTERNAL_SECRET = process.env.INTERNAL_API_SECRET;
 
 /**
  * POST /api/uploads/[id]/vectorize
@@ -24,7 +24,15 @@ export async function POST(
 ) {
   // Auth: accept either a valid DA session or an internal secret
   const internalToken = request.headers.get("x-internal-secret");
-  const isInternalCall = INTERNAL_SECRET && internalToken === INTERNAL_SECRET;
+  // Timing-safe comparison to prevent secret leakage via timing attacks
+  let isInternalCall = false;
+  if (INTERNAL_SECRET && internalToken && INTERNAL_SECRET.length === internalToken.length) {
+    const { timingSafeEqual } = await import("crypto");
+    isInternalCall = timingSafeEqual(
+      Buffer.from(INTERNAL_SECRET),
+      Buffer.from(internalToken)
+    );
+  }
 
   if (!isInternalCall) {
     const authResult = await requireDA(request);
@@ -68,11 +76,23 @@ export async function POST(
   }
 
   if (upload.vector_status === "processing") {
-    return NextResponse.json({
-      success: true,
-      message: "Vectorization already in progress",
-      vectorStatus: "processing",
-    });
+    // H-5 fix: Check if vectorization has been stuck for too long (> 10 min)
+    // If so, allow retry by treating it as failed
+    const { data: startCheck } = await queryOne<{ minutes_ago: number }>(
+      `SELECT EXTRACT(EPOCH FROM (NOW() - updated_at)) / 60 AS minutes_ago
+       FROM master_list_uploads WHERE id = $1`,
+      [uploadId]
+    );
+    const minutesAgo = startCheck?.minutes_ago ?? 0;
+    if (minutesAgo < 10) {
+      return NextResponse.json({
+        success: true,
+        message: "Vectorization already in progress",
+        vectorStatus: "processing",
+      });
+    }
+    // Stale "processing" — allow retry
+    console.log(`[vectorize] Stale processing state detected (${Math.round(minutesAgo)} min). Retrying...`);
   }
 
   // Mark as processing
@@ -104,7 +124,7 @@ export async function POST(
           [uploadId]
         );
         return NextResponse.json(
-          { error: "VECTORIZE_ERROR", message: svError.message },
+          { error: "VECTORIZE_ERROR", message: "Search vector generation failed" },
           { status: 500 }
         );
       }

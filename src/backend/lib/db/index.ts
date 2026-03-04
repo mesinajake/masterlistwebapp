@@ -107,8 +107,19 @@ export async function rpc<T = unknown>(
   args: Record<string, unknown> = {}
 ): Promise<SingleResult<T>> {
   try {
+    // C-2 fix: Validate function name and arg keys against SQL identifier pattern
+    // to prevent SQL injection via interpolated identifiers
+    const SAFE_IDENTIFIER = /^[a-z_][a-z0-9_]*$/i;
+    if (!SAFE_IDENTIFIER.test(functionName)) {
+      throw new Error(`Invalid function name: ${functionName}`);
+    }
     const pool = getPool();
     const keys = Object.keys(args);
+    for (const key of keys) {
+      if (!SAFE_IDENTIFIER.test(key)) {
+        throw new Error(`Invalid argument key: ${key}`);
+      }
+    }
     const placeholders = keys.map((k, i) => `${k} := $${i + 1}`).join(", ");
     const values = keys.map((k) => args[k]);
     const sql = keys.length > 0

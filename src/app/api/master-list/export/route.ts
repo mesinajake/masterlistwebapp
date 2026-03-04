@@ -111,8 +111,9 @@ export async function GET(request: NextRequest) {
       );
 
       if (error) {
+        console.error("Export query error:", error);
         return NextResponse.json(
-          { error: "QUERY_ERROR", message: error.message },
+          { error: "QUERY_ERROR", message: "Failed to export data" },
           { status: 500 }
         );
       }

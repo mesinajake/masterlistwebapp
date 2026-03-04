@@ -18,7 +18,7 @@ export async function GET() {
     }
 
     const { data, error } = await queryOne<UserRow>(
-      "SELECT * FROM users WHERE id = $1",
+      "SELECT id, lark_user_id, name, email, avatar_url, role, created_at, updated_at FROM users WHERE id = $1",
       [session.sub]
     );
 
