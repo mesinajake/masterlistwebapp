@@ -75,16 +75,16 @@ export function DropZone({ onFileSelect, disabled, className }: DropZoneProps) {
       onClick={() => !disabled && inputRef.current?.click()}
       role="button"
       tabIndex={0}
-      aria-label="Drop Excel file here or click to browse"
+      aria-label="Drop file here or click to browse"
     >
       <span className="material-symbols-outlined text-[48px] text-text-secondary-light dark:text-text-secondary-dark mb-3">
         upload_file
       </span>
       <p className="text-sm font-medium text-text-primary-light dark:text-text-primary-dark">
-        Drag & drop your Excel file here
+        Drag & drop your file here
       </p>
       <p className="mt-1 text-xs text-text-secondary-light dark:text-text-secondary-dark">
-        or click to browse — .xlsx, .xls up to {MAX_UPLOAD_SIZE / (1024 * 1024)} MB
+        or click to browse — .xlsx, .xls, .csv up to {MAX_UPLOAD_SIZE / (1024 * 1024)} MB
       </p>
 
       {error && (
@@ -94,7 +94,7 @@ export function DropZone({ onFileSelect, disabled, className }: DropZoneProps) {
       <input
         ref={inputRef}
         type="file"
-        accept=".xlsx,.xls"
+        accept=".xlsx,.xls,.csv"
         className="hidden"
         disabled={disabled}
         onChange={(e) => {

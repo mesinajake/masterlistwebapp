@@ -6,15 +6,14 @@ import type { UploadProgress } from "@/shared/types/upload";
 
 interface UploadFormProps {
   onUpload: (file: File, password?: string) => void;
+  onCancel?: () => void;
   isUploading: boolean;
   uploadProgress?: UploadProgress | null;
 }
 
 const STAGE_LABELS: Record<string, string> = {
-  parsing: "Parsing Excel File",
+  parsing: "Parsing File",
   inserting: "Inserting Rows",
-  vectors: "Generating Search Index",
-  indexing: "Rebuilding Search Index",
   complete: "Complete",
   error: "Error",
 };
@@ -22,25 +21,20 @@ const STAGE_LABELS: Record<string, string> = {
 const STAGE_ICONS: Record<string, string> = {
   parsing: "description",
   inserting: "database",
-  vectors: "manage_search",
-  indexing: "index",
   complete: "check_circle",
   error: "error",
 };
 
 /** Compute an overall progress (0–100) that never resets between stages */
 function computeOverallProgress(up: UploadProgress): number {
-  // Weights: parsing 0–10%, inserting 10–60%, vectors 60–90%, indexing 90–100%
+  // Weights: parsing 0–15%, inserting 15–100%
+  // (vectorization now happens in background — admin doesn't wait)
   const stageP = Math.max(0, Math.min(100, up.progress));
   switch (up.stage) {
     case "parsing":
-      return Math.round((stageP / 100) * 10);
+      return Math.round((stageP / 100) * 15);
     case "inserting":
-      return Math.round(10 + (stageP / 100) * 50);
-    case "vectors":
-      return stageP < 0 ? 60 : Math.round(60 + (stageP / 100) * 30);
-    case "indexing":
-      return Math.round(90 + (stageP / 100) * 10);
+      return Math.round(15 + (stageP / 100) * 85);
     case "complete":
       return 100;
     case "error":
@@ -50,7 +44,7 @@ function computeOverallProgress(up: UploadProgress): number {
   }
 }
 
-export function UploadForm({ onUpload, isUploading, uploadProgress }: UploadFormProps) {
+export function UploadForm({ onUpload, onCancel, isUploading, uploadProgress }: UploadFormProps) {
   const [selectedFile, setSelectedFile] = useState<File | null>(null);
   const [password, setPassword] = useState("");
   const [showPassword, setShowPassword] = useState(false);
@@ -182,6 +176,19 @@ export function UploadForm({ onUpload, isUploading, uploadProgress }: UploadForm
               <span className="text-sm font-semibold text-primary tabular-nums">
                 {overall}%
               </span>
+              {onCancel && uploadProgress.stage !== "complete" && (
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  onClick={onCancel}
+                  className="text-red-500 hover:text-red-600 hover:bg-red-50 dark:hover:bg-red-950"
+                >
+                  <span className="material-symbols-outlined text-[16px]">
+                    close
+                  </span>
+                  Cancel
+                </Button>
+              )}
             </div>
 
             {/* Overall progress bar (never resets) */}
@@ -197,13 +204,12 @@ export function UploadForm({ onUpload, isUploading, uploadProgress }: UploadForm
             </div>
 
             {/* Stage steps with labels */}
-            <div className="mt-4 grid grid-cols-3 gap-2 text-[11px]">
-              {(["parsing", "inserting", "vectors"] as const).map((s, idx) => {
+            <div className="mt-4 grid grid-cols-2 gap-2 text-[11px]">
+              {(["parsing", "inserting"] as const).map((s, idx) => {
                 const isActive = uploadProgress.stage === s;
                 const isDone =
-                  (s === "parsing" && ["inserting", "vectors", "complete"].includes(uploadProgress.stage)) ||
-                  (s === "inserting" && ["vectors", "complete"].includes(uploadProgress.stage)) ||
-                  (s === "vectors" && uploadProgress.stage === "complete");
+                  (s === "parsing" && ["inserting", "complete"].includes(uploadProgress.stage)) ||
+                  (s === "inserting" && uploadProgress.stage === "complete");
                 return (
                   <div
                     key={s}

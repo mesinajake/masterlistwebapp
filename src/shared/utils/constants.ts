@@ -1,16 +1,17 @@
 // ─── App Constants ────────────────────────────────────
 
-/** Maximum file size for Excel uploads (300 MB) */
+/** Maximum file size for uploads (300 MB) */
 export const MAX_UPLOAD_SIZE = 300 * 1024 * 1024;
 
-/** Accepted Excel MIME types */
+/** Accepted MIME types */
 export const ACCEPTED_FILE_TYPES = [
   "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet", // .xlsx
   "application/vnd.ms-excel", // .xls
+  "text/csv", // .csv
 ];
 
 /** Accepted file extensions */
-export const ACCEPTED_EXTENSIONS = [".xlsx", ".xls"];
+export const ACCEPTED_EXTENSIONS = [".xlsx", ".xls", ".csv"];
 
 /** Default page size for table pagination */
 export const DEFAULT_PAGE_SIZE = 25;

@@ -16,6 +16,7 @@ async function ensureDir(dir: string): Promise<void> {
 
 /**
  * Upload a file to local storage.
+ * Validates the resolved path stays within STORAGE_ROOT to prevent path traversal.
  */
 export async function uploadFile(
   bucket: string,
@@ -23,9 +24,12 @@ export async function uploadFile(
   data: Buffer | ArrayBuffer
 ): Promise<{ error: { message: string } | null }> {
   try {
-    const fullDir = path.join(STORAGE_ROOT, bucket, path.dirname(filePath));
+    const fullPath = path.resolve(STORAGE_ROOT, bucket, filePath);
+    if (!fullPath.startsWith(STORAGE_ROOT)) {
+      return { error: { message: "Invalid file path: directory traversal detected" } };
+    }
+    const fullDir = path.dirname(fullPath);
     await ensureDir(fullDir);
-    const fullPath = path.join(STORAGE_ROOT, bucket, filePath);
     const buffer = data instanceof ArrayBuffer ? Buffer.from(data) : data;
     await fs.writeFile(fullPath, buffer);
     return { error: null };
@@ -38,6 +42,7 @@ export async function uploadFile(
 
 /**
  * Delete file(s) from local storage.
+ * Validates each path stays within STORAGE_ROOT to prevent path traversal.
  */
 export async function removeFiles(
   bucket: string,
@@ -45,7 +50,11 @@ export async function removeFiles(
 ): Promise<{ error: { message: string } | null }> {
   try {
     for (const fp of filePaths) {
-      const fullPath = path.join(STORAGE_ROOT, bucket, fp);
+      const fullPath = path.resolve(STORAGE_ROOT, bucket, fp);
+      if (!fullPath.startsWith(STORAGE_ROOT)) {
+        console.error(`[storage] Path traversal blocked: ${fp}`);
+        continue;
+      }
       await fs.unlink(fullPath).catch(() => {
         // Ignore if file doesn't exist
       });
