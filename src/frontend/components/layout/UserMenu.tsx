@@ -38,9 +38,6 @@ export function UserMenu() {
             <p className="text-sm font-medium text-text-primary-light dark:text-text-primary-dark">
               {user.name}
             </p>
-            <p className="text-xs text-text-secondary-light dark:text-text-secondary-dark">
-              {user.email ?? user.role.toUpperCase()}
-            </p>
             <span className="mt-1 inline-block rounded-full bg-primary/10 px-2 py-0.5 text-xs font-medium text-primary">
               {user.role === "super_admin"
                 ? "Super Admin"

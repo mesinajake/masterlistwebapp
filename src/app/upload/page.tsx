@@ -43,7 +43,13 @@ function UploadContent() {
   useEffect(() => {
     if (preview && step === "upload" && !isUploading) {
       setStep("preview");
-      toast.success("File parsed successfully!");
+      toast("Upload Complete", {
+        style: {
+          background: "#F0FDF4",
+          border: "1px solid #BBF7D0",
+          color: "#166534",
+        },
+      });
     }
   }, [preview, step, isUploading]);
 
@@ -51,7 +57,13 @@ function UploadContent() {
     upload({ file, password }, {
       onSuccess: () => {
         setStep("preview");
-        toast.success("File parsed successfully!");
+        toast("Upload Complete", {
+          style: {
+            background: "#F0FDF4",
+            border: "1px solid #BBF7D0",
+            color: "#166534",
+          },
+        });
       },
       onError: (err) => {
         toast.error(err.message || "Upload failed");
@@ -64,7 +76,13 @@ function UploadContent() {
     activate(preview.uploadId, {
       onSuccess: () => {
         setStep("done");
-        toast.success("Master List activated!");
+        toast("Activated Successfully", {
+          style: {
+            background: "#EFF6FF",
+            border: "1px solid #BFDBFE",
+            color: "#1E40AF",
+          },
+        });
       },
       onError: (err) => {
         toast.error(err.message || "Activation failed");

@@ -138,8 +138,8 @@ export async function POST(
       console.log(`[vectorize] Progress: ${svGenerated} / ${totalRows} (${pct}%)`);
     }
 
-    // ── Rebuild GIN index ──────────────────────────────────
-    console.log("[vectorize] Rebuilding GIN index...");
+    // ── Rebuild GIN index (ensure it exists — it is never dropped now) ──
+    console.log("[vectorize] Ensuring GIN index exists...");
     await execute(
       "CREATE INDEX IF NOT EXISTS idx_rows_search_vector ON master_list_rows USING GIN (search_vector)"
     );

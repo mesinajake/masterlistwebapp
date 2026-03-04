@@ -1,7 +1,6 @@
 "use client";
 
 import { AuthGuard } from "@/frontend/components/auth/AuthGuard";
-import { RoleGuard } from "@/frontend/components/auth/RoleGuard";
 import { Header } from "@/frontend/components/layout/Header";
 import { useAuth } from "@/frontend/hooks/useAuth";
 import { useUIStore } from "@/frontend/stores/uiStore";
@@ -10,9 +9,7 @@ import { Badge } from "@/frontend/components/ui/Badge";
 export default function SettingsPage() {
   return (
     <AuthGuard>
-      <RoleGuard requiredRole="da">
-        <SettingsContent />
-      </RoleGuard>
+      <SettingsContent />
     </AuthGuard>
   );
 }

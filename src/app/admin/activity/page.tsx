@@ -172,7 +172,7 @@ function ActivityContent() {
         ) : (
           <>
             {/* Activity list */}
-            <div className="bg-white dark:bg-surface-dark rounded-lg border border-border-light dark:border-border-dark divide-y divide-border-light dark:divide-border-dark">
+            <div className="bg-white dark:bg-surface-dark rounded-lg border border-border-light dark:border-border-dark divide-y divide-border-light dark:divide-border-dark max-h-[600px] overflow-y-auto">
               {data.activities.map((activity) => {
                 const config = ACTION_CONFIG[activity.action] ?? {
                   label: activity.action,

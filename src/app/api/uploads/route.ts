@@ -132,7 +132,6 @@ export async function POST(request: NextRequest) {
   // Process in background — the streaming response starts immediately
   (async () => {
     let uploadId: string | null = null;
-    let indexDropped = false;
     let triggerDisabled = false;
     let client: PoolClient | null = null;
     let aborted = false;
@@ -197,7 +196,7 @@ export async function POST(request: NextRequest) {
             previewRows.push(...parseBatch.batch.slice(0, needed));
           }
 
-          // First batch: create upload record + prepare table
+          // First batch: create upload record + prepare staging table
           if (parseBatch.batchIndex === 0) {
             const { data: uploadRecord, error: uploadError } = await queryOne<{ id: string }>(
               `INSERT INTO master_list_uploads
@@ -218,31 +217,19 @@ export async function POST(request: NextRequest) {
             setUploadLockId(uploadId);
             console.log(`[upload] Upload record created: ${uploadId}`);
 
-            // Disable search_vector trigger (prevents per-row trigger overhead)
-            await client.query("SELECT disable_search_trigger()");
-            triggerDisabled = true;
-
-            // Drop GIN index for faster bulk inserts (~20-30% speedup)
-            await client.query("DROP INDEX IF EXISTS idx_rows_search_vector");
-            indexDropped = true;
-
-            // Drop B-tree index on (upload_id, row_index) for faster COPY (~10-15%)
-            await client.query("DROP INDEX IF EXISTS idx_rows_upload_id_row_index");
-
-            // Disable WAL sync for this session — ~5-10% faster COPY
-            await client.query("SET LOCAL synchronous_commit = off");
+            // Clear staging table for this upload (safety — should already be empty)
+            await client.query("DELETE FROM master_list_rows_staging WHERE upload_id = $1", [uploadId]);
 
             await emit("inserting", 0, "Inserting rows...");
           }
 
           if (parseBatch.batch.length === 0) continue;
 
-          // ── COPY this batch directly into the table ──
+          // ── COPY this batch into the STAGING table (no indexes, no triggers) ──
           const tCopyBatch = Date.now();
-          // COPY FROM STDIN is 3-5x faster than INSERT via RPC/JSON
           const copyStream = client.query(
             copyFrom(
-              "COPY master_list_rows (upload_id, row_index, data) FROM STDIN WITH (FORMAT csv)"
+              "COPY master_list_rows_staging (upload_id, row_index, data) FROM STDIN WITH (FORMAT csv)"
             )
           );
 
@@ -306,11 +293,43 @@ export async function POST(request: NextRequest) {
         }
       }
 
-      // Rebuild B-tree index on (upload_id, row_index) after all COPY batches
-      const tIndex = Date.now();
-      await execute(
-        "CREATE INDEX IF NOT EXISTS idx_rows_upload_id_row_index ON master_list_rows (upload_id, row_index)"
-      );
+      // ── Move rows from staging → production atomically ──────
+      await emit("inserting", 95, "Finalizing data...");
+      const tMove = Date.now();
+
+      // Disable the search trigger before bulk-moving rows
+      // (vectors are generated later by background vectorization)
+      await rpc("disable_search_trigger");
+      triggerDisabled = true;
+
+      const moveClient = await getClient();
+      try {
+        await moveClient.query("BEGIN");
+
+        // Move all rows from staging to production in a single INSERT...SELECT
+        await moveClient.query(
+          `INSERT INTO master_list_rows (id, upload_id, row_index, data)
+           SELECT id, upload_id, row_index, data
+           FROM master_list_rows_staging
+           WHERE upload_id = $1`,
+          [uploadId]
+        );
+
+        // Clean up staging
+        await moveClient.query(
+          "DELETE FROM master_list_rows_staging WHERE upload_id = $1",
+          [uploadId]
+        );
+
+        await moveClient.query("COMMIT");
+      } catch (moveErr) {
+        await moveClient.query("ROLLBACK");
+        throw moveErr;
+      } finally {
+        moveClient.release();
+      }
+
+      console.log(`[upload:timing] Staging → production move: ${Date.now() - tMove}ms`);
 
       // Update upload record with actual row count
       await execute(
@@ -318,8 +337,8 @@ export async function POST(request: NextRequest) {
         [totalParsed, uploadId]
       );
 
-      console.log(`[upload] All ${totalInserted} rows inserted via COPY`);
-      console.log(`[upload:timing] Parse+COPY total: ${Date.now() - tParse}ms, COPY only: ${tCopyTotal}ms, Index rebuild: ${Date.now() - tIndex}ms`);
+      console.log(`[upload] All ${totalInserted} rows inserted via COPY → staging → production`);
+      console.log(`[upload:timing] Parse+COPY total: ${Date.now() - tParse}ms, COPY only: ${tCopyTotal}ms`);
       await emit("inserting", 100, `Inserted ${totalInserted.toLocaleString()} rows`);
 
       // ── Audit log ─────────────────────────────────────────
@@ -386,28 +405,16 @@ export async function POST(request: NextRequest) {
         client = null;
       }
 
-      // Clean up partial data
+      // Clean up partial data (staging + production + upload record)
       if (uploadId) {
         try {
+          await execute("DELETE FROM master_list_rows_staging WHERE upload_id = $1", [uploadId]);
           await execute("DELETE FROM master_list_rows WHERE upload_id = $1", [uploadId]);
           await execute("DELETE FROM master_list_uploads WHERE id = $1", [uploadId]);
           console.log(`[upload] Cleaned up partial upload ${uploadId}`);
         } catch (cleanupErr) {
           console.error("[upload] Cleanup failed:", cleanupErr);
         }
-      }
-
-      // Rebuild dropped index
-      if (indexDropped) {
-        try {
-          await execute(
-            "CREATE INDEX IF NOT EXISTS idx_rows_search_vector ON master_list_rows USING GIN (search_vector)"
-          );
-          await execute(
-            "CREATE INDEX IF NOT EXISTS idx_rows_upload_id_row_index ON master_list_rows (upload_id, row_index)"
-          );
-          console.log("[upload] Rebuilt indexes after error");
-        } catch { /* ignore — index may already exist */ }
       }
 
       // Re-enable trigger

@@ -1,17 +1,17 @@
 import { NextRequest, NextResponse } from "next/server";
-import { requireDA, isPayload } from "@/backend/lib/auth/middleware";
+import { requireAuth, isPayload } from "@/backend/lib/auth/middleware";
 import { queryOne, execute, getClient } from "@/backend/lib/db";
 
 /**
  * POST /api/uploads/[id]/activate
  * Set a specific upload as the active Master List.
- * Deactivates all other uploads. Requires DA or super_admin role.
+ * Deactivates all other uploads. Any authenticated user can activate.
  */
 export async function POST(
   request: NextRequest,
   { params }: { params: { id: string } }
 ) {
-  const authResult = await requireDA(request);
+  const authResult = await requireAuth(request);
   if (!isPayload(authResult)) return authResult;
 
   const uploadId = params.id;

@@ -57,7 +57,7 @@ export async function middleware(request: NextRequest) {
     }
 
     // DA-only page routes (DA and super_admin can access)
-    const DA_PATHS = ["/upload", "/settings"];
+    const DA_PATHS = ["/upload"];
     if (DA_PATHS.some((p) => pathname.startsWith(p)) && payload.role !== "da" && payload.role !== "super_admin") {
       if (pathname.startsWith("/api/")) {
         return NextResponse.json(

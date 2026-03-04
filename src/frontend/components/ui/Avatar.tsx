@@ -1,4 +1,5 @@
 import { cn } from "@/shared/utils/cn";
+import { useState } from "react";
 
 interface AvatarProps {
   src?: string | null;
@@ -21,6 +22,7 @@ export function Avatar({
   showOnline = false,
   className,
 }: AvatarProps) {
+  const [imgError, setImgError] = useState(false);
   const initials = name
     .split(" ")
     .map((n) => n[0])
@@ -36,11 +38,13 @@ export function Avatar({
           sizeMap[size]
         )}
       >
-        {src ? (
+        {src && !imgError ? (
           <img
             src={src}
             alt={name}
             className="h-full w-full object-cover"
+            referrerPolicy="no-referrer"
+            onError={() => setImgError(true)}
           />
         ) : (
           <div className="flex h-full w-full items-center justify-center bg-primary/10 text-primary text-xs font-medium">

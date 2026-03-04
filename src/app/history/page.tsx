@@ -32,7 +32,13 @@ function HistoryContent() {
     setActivatingId(uploadId);
     activate(uploadId, {
       onSuccess: () => {
-        toast.success("Upload activated successfully");
+        toast("Activated Successfully", {
+          style: {
+            background: "#EFF6FF",
+            border: "1px solid #BFDBFE",
+            color: "#1E40AF",
+          },
+        });
         setActivatingId(null);
       },
       onError: (err) => {
@@ -50,7 +56,13 @@ function HistoryContent() {
     if (!deleteTarget) return;
     deleteUpload(deleteTarget.id, {
       onSuccess: () => {
-        toast.success("Upload deleted successfully");
+        toast("Deleted Successfully", {
+          style: {
+            background: "#FEF2F2",
+            border: "1px solid #FEE2E2",
+            color: "#991B1B",
+          },
+        });
         setDeleteTarget(null);
       },
       onError: (err) => {
