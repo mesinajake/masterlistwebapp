@@ -1,8 +1,12 @@
 "use client";
 
-import { useState, useCallback } from "react";
+import { useState, useCallback, useRef } from "react";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 import type { UploadPreview, UploadProgress } from "@/shared/types/upload";
+import {
+  shouldParseClientSide,
+  parseExcelClientSide,
+} from "@/frontend/lib/client-excel-parser";
 
 interface UploadParams {
   file: File;
@@ -15,24 +19,139 @@ export function useUpload() {
   const [uploadProgress, setUploadProgress] = useState<UploadProgress | null>(
     null
   );
+  const abortControllerRef = useRef<AbortController | null>(null);
 
   const resetProgress = useCallback(() => setUploadProgress(null), []);
 
+  const cancelUpload = useCallback(() => {
+    if (abortControllerRef.current) {
+      abortControllerRef.current.abort();
+      abortControllerRef.current = null;
+    }
+    setUploadProgress(null);
+  }, []);
+
   const uploadMutation = useMutation({
     mutationFn: async ({ file, password }: UploadParams) => {
+      // Create a new AbortController for this upload
+      const controller = new AbortController();
+      abortControllerRef.current = controller;
+
       // Reset progress at the start
-      setUploadProgress({ stage: "parsing", progress: 0, detail: "Uploading file..." });
+      setUploadProgress({ stage: "parsing", progress: 0, detail: "Preparing file..." });
+
+      // ── Client-side Excel parsing ──────────────────────
+      // For Excel files: parse in browser → convert to CSV → upload CSV
+      // This moves ~60-75s of server-side parsing to the client.
+      let uploadFile: File | Blob = file;
+      let uploadFileName = file.name;
+
+      if (shouldParseClientSide(file.name)) {
+        try {
+          setUploadProgress({
+            stage: "parsing",
+            progress: 5,
+            detail: "Parsing Excel file in browser...",
+          });
+
+          const parseResult = await parseExcelClientSide(
+            file,
+            password,
+            (message) => {
+              setUploadProgress({
+                stage: "parsing",
+                progress: 10,
+                detail: message,
+              });
+            },
+            controller.signal
+          );
+
+          // Use the CSV output instead of the original Excel file
+          uploadFile = parseResult.csvBlob;
+          uploadFileName = parseResult.csvFileName;
+          // Don't send password — the CSV is already decrypted
+          password = undefined;
+
+          console.log(
+            `[useUpload] Client-side parse complete: ${parseResult.rowCount} rows, ` +
+            `sheet: "${parseResult.sheetName}", CSV size: ${(parseResult.csvBlob.size / 1024 / 1024).toFixed(1)} MB`
+          );
+
+          setUploadProgress({
+            stage: "parsing",
+            progress: 15,
+            detail: `Parsed ${parseResult.rowCount.toLocaleString()} rows. Uploading CSV...`,
+          });
+        } catch (err) {
+          if (err instanceof DOMException && err.name === "AbortError") throw err;
+          // Fall back to server-side parsing if client-side fails
+          console.warn("[useUpload] Client-side parse failed, falling back to server:", err);
+          setUploadProgress({
+            stage: "parsing",
+            progress: 5,
+            detail: "Uploading file for server-side parsing...",
+          });
+        }
+      }
 
       const formData = new FormData();
-      formData.append("file", file);
+      // Append the file (CSV or original Excel) with the appropriate name
+      formData.append("file", uploadFile, uploadFileName);
       if (password) {
         formData.append("password", password);
       }
 
-      const res = await fetch("/api/uploads", {
-        method: "POST",
-        body: formData,
-      });
+      // Generate idempotency token to prevent duplicate submissions
+      const idempotencyToken = crypto.randomUUID();
+      formData.append("idempotencyToken", idempotencyToken);
+
+      // Retry with exponential backoff on network errors only
+      const MAX_RETRIES = 3;
+      let lastError: Error | null = null;
+      let res: Response | null = null;
+
+      for (let attempt = 0; attempt <= MAX_RETRIES; attempt++) {
+        if (controller.signal.aborted) {
+          throw new DOMException("Upload cancelled", "AbortError");
+        }
+
+        try {
+          // Re-create FormData for retries (streams can't be re-read)
+          const retryFormData = new FormData();
+          retryFormData.append("file", file);
+          if (password) retryFormData.append("password", password);
+          retryFormData.append("idempotencyToken", idempotencyToken);
+
+          res = await fetch("/api/uploads", {
+            method: "POST",
+            body: retryFormData,
+            signal: controller.signal,
+          });
+          lastError = null;
+          break; // Success — got a response (even if HTTP error)
+        } catch (err) {
+          // Don't retry user cancellation
+          if (err instanceof DOMException && err.name === "AbortError") {
+            throw err;
+          }
+          // Network error — retry with backoff
+          lastError = err instanceof Error ? err : new Error(String(err));
+          if (attempt < MAX_RETRIES) {
+            const delay = Math.min(1000 * Math.pow(2, attempt), 8000); // 1s, 2s, 4s
+            setUploadProgress({
+              stage: "parsing",
+              progress: 0,
+              detail: `Network error. Retrying in ${delay / 1000}s... (attempt ${attempt + 2}/${MAX_RETRIES + 1})`,
+            });
+            await new Promise((resolve) => setTimeout(resolve, delay));
+          }
+        }
+      }
+
+      if (lastError || !res) {
+        throw lastError || new Error("Upload failed after retries");
+      }
 
       if (!res.ok) {
         // Non-streaming error (e.g. 400 validation)
@@ -94,12 +213,19 @@ export function useUpload() {
       return result;
     },
     onSuccess: (data) => {
+      abortControllerRef.current = null;
       setPreview(data);
       queryClient.invalidateQueries({ queryKey: ["master-list"] });
       queryClient.invalidateQueries({ queryKey: ["columns"] });
       queryClient.invalidateQueries({ queryKey: ["uploads"] });
     },
-    onError: () => {
+    onError: (error) => {
+      abortControllerRef.current = null;
+      // Don't show error state for user-initiated cancellations
+      if (error instanceof DOMException && error.name === "AbortError") {
+        setUploadProgress(null);
+        return;
+      }
       setUploadProgress(null);
     },
   });
@@ -149,6 +275,7 @@ export function useUpload() {
     upload: uploadMutation.mutate,
     isUploading: uploadMutation.isPending,
     uploadError: uploadMutation.error,
+    cancelUpload,
     activate: activateMutation.mutate,
     isActivating: activateMutation.isPending,
     activateError: activateMutation.error,
@@ -156,6 +283,7 @@ export function useUpload() {
     isDeleting: deleteMutation.isPending,
     deleteError: deleteMutation.error,
     reset: () => {
+      cancelUpload();
       setPreview(null);
       resetProgress();
       uploadMutation.reset();

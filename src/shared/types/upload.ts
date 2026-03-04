@@ -25,6 +25,9 @@ export interface UploadPreview {
 /** Progress event emitted during upload streaming */
 export interface UploadProgress {
   stage: "parsing" | "inserting" | "vectors" | "indexing" | "complete" | "error";
+  /** Note: "vectors" and "indexing" stages are no longer emitted during upload.
+   *  Vectorization happens in background after upload completes. */
+
   progress: number; // 0–100
   detail?: string;
   data?: UploadPreview;

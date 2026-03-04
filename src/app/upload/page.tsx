@@ -26,6 +26,7 @@ function UploadContent() {
     upload,
     isUploading,
     uploadProgress,
+    cancelUpload,
     activate,
     isActivating,
     reset,
@@ -73,7 +74,7 @@ function UploadContent() {
             Upload Master List
           </h1>
           <p className="text-sm text-text-secondary-light dark:text-text-secondary-dark mt-1">
-            Upload an Excel file (.xlsx, .xls) to replace the current Master
+            Upload a file (.xlsx, .xls, .csv) to replace the current Master
             List data
           </p>
         </div>
@@ -119,6 +120,7 @@ function UploadContent() {
         {step === "upload" && (
           <UploadForm
             onUpload={handleFileSelect}
+            onCancel={cancelUpload}
             isUploading={isUploading}
             uploadProgress={uploadProgress}
           />
