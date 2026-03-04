@@ -47,10 +47,18 @@ export function Header() {
           </Link>
           {isSuperAdmin && (
             <Link
+              href="/admin/activity"
+              className="text-sm font-medium text-text-secondary-light hover:text-primary transition-colors"
+            >
+              Activity
+            </Link>
+          )}
+          {isSuperAdmin && (
+            <Link
               href="/admin/users"
               className="text-sm font-medium text-text-secondary-light hover:text-primary transition-colors"
             >
-              Admin
+              Users
             </Link>
           )}
         </nav>
