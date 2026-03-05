@@ -5,6 +5,7 @@ import { exchangeCodeForToken } from "@/backend/lib/lark/oauth";
 import { fetchLarkUserInfo } from "@/backend/lib/lark/user-info";
 import { queryOne, execute } from "@/backend/lib/db";
 import { setSession } from "@/backend/lib/auth/session";
+import { authRateLimiter } from "@/backend/lib/security/rate-limit";
 import type { UserRole } from "@/shared/types/user";
 
 /**
@@ -17,6 +18,15 @@ import type { UserRole } from "@/shared/types/user";
  */
 export async function GET(request: NextRequest) {
   const appUrl = process.env.NEXT_PUBLIC_APP_URL || "http://localhost:3000";
+
+  // Rate limit by IP: 10 attempts per minute
+  const ip = request.headers.get("x-forwarded-for")?.split(",")[0]?.trim()
+    || request.headers.get("x-real-ip")
+    || "unknown";
+  const rateCheck = authRateLimiter.check(ip);
+  if (!rateCheck.allowed) {
+    return NextResponse.redirect(`${appUrl}/login?error=rate_limited`);
+  }
 
   try {
     const { searchParams } = request.nextUrl;

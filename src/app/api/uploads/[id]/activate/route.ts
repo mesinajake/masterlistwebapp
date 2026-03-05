@@ -1,18 +1,19 @@
 import { NextRequest, NextResponse } from "next/server";
-import { requireAuth, isPayload } from "@/backend/lib/auth/middleware";
+import { requireDA, isPayload } from "@/backend/lib/auth/middleware";
 import { queryOne, execute, getClient } from "@/backend/lib/db";
 import { isValidUUID } from "@/shared/utils/validators";
 
 /**
  * POST /api/uploads/[id]/activate
  * Set a specific upload as the active Master List.
- * Deactivates all other uploads. Any authenticated user can activate.
+ * Deactivates all other uploads. DA or super_admin only.
+ * Agents see the globally active dataset but cannot switch it.
  */
 export async function POST(
   request: NextRequest,
   { params }: { params: { id: string } }
 ) {
-  const authResult = await requireAuth(request);
+  const authResult = await requireDA(request);
   if (!isPayload(authResult)) return authResult;
 
   const uploadId = params.id;
@@ -29,9 +30,10 @@ export async function POST(
     // Verify the upload exists
     const { data: upload, error: fetchError } = await queryOne<{
       id: string;
+      file_name: string;
       row_count: number;
     }>(
-      "SELECT id, row_count FROM master_list_uploads WHERE id = $1",
+      "SELECT id, file_name, row_count FROM master_list_uploads WHERE id = $1",
       [uploadId]
     );
 
@@ -77,7 +79,7 @@ export async function POST(
         authResult.sub,
         "activate",
         uploadId,
-        JSON.stringify({ row_count: upload.row_count }),
+        JSON.stringify({ file_name: upload.file_name, row_count: upload.row_count }),
       ]
     );
     if (auditError) {

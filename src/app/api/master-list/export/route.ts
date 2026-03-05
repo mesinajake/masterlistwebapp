@@ -3,6 +3,7 @@ import { requireAuth, isPayload } from "@/backend/lib/auth/middleware";
 import { queryOne, rpc, getClient } from "@/backend/lib/db";
 import { csvHeaderLine, rowToCSVLine } from "@/backend/lib/csv/exporter";
 import { MAX_EXPORT_ROWS } from "@/shared/utils/constants";
+import { apiRateLimiter } from "@/backend/lib/security/rate-limit";
 import type { PoolClient } from "pg";
 import Cursor from "pg-cursor";
 
@@ -14,6 +15,15 @@ import Cursor from "pg-cursor";
 export async function GET(request: NextRequest) {
   const authResult = await requireAuth(request);
   if (!isPayload(authResult)) return authResult;
+
+  // Rate limit: 120 requests per minute per user
+  const rateCheck = apiRateLimiter.check(authResult.sub);
+  if (!rateCheck.allowed) {
+    return NextResponse.json(
+      { error: "RATE_LIMITED", message: "Too many requests. Please slow down." },
+      { status: 429, headers: { "Retry-After": String(Math.ceil(rateCheck.retryAfterMs / 1000)) } }
+    );
+  }
 
   try {
     const { searchParams } = request.nextUrl;
@@ -120,11 +130,13 @@ export async function GET(request: NextRequest) {
 
     const stream = new ReadableStream({
       async start(controller) {
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        let cursor: any = null;
         try {
           // Send CSV header with BOM
           controller.enqueue(new TextEncoder().encode(csvHeaderLine(colHeaders) + "\r\n"));
 
-          const cursor = client.query(
+          cursor = client.query(
             new Cursor(
               `SELECT data FROM master_list_rows
                WHERE upload_id = $1
@@ -153,6 +165,7 @@ export async function GET(request: NextRequest) {
           controller.close();
         } catch (err) {
           console.error("Export stream error:", err);
+          if (cursor) { try { await cursor.close(); } catch { /* ignore */ } }
           controller.error(err);
         } finally {
           if (!released) {

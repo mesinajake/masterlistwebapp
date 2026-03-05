@@ -6,7 +6,13 @@
     "dev": "set NODE_OPTIONS=--max-old-space-size=8192 && next dev",
     "build": "next build",
     "start": "set NODE_OPTIONS=--max-old-space-size=8192 && next start",
-    "lint": "next lint"
+    "lint": "next lint",
+    "pm2:start": "pm2 start ecosystem.config.js",
+    "pm2:stop": "pm2 stop masterlist-app",
+    "pm2:restart": "pm2 restart masterlist-app",
+    "pm2:logs": "pm2 logs masterlist-app",
+    "pm2:status": "pm2 status",
+    "pm2:monit": "pm2 monit"
   },
   "dependencies": {
     "@next/swc-win32-x64-msvc": "^16.1.6",
@@ -41,6 +47,7 @@
     "@types/react-dom": "^18",
     "eslint": "^8",
     "eslint-config-next": "14.2.35",
+    "pm2": "^6.0.14",
     "postcss": "^8",
     "prettier": "^3.8.1",
     "prettier-plugin-tailwindcss": "^0.7.2",

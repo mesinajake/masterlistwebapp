@@ -14,7 +14,7 @@ export const ACCEPTED_FILE_TYPES = [
 export const ACCEPTED_EXTENSIONS = [".xlsx", ".xls", ".csv"];
 
 /** Default page size for table pagination */
-export const DEFAULT_PAGE_SIZE = 25;
+export const DEFAULT_PAGE_SIZE = 50;
 
 /** Maximum page size allowed */
 export const MAX_PAGE_SIZE = 100;

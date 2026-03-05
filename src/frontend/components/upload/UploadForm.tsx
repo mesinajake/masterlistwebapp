@@ -14,6 +14,7 @@ interface UploadFormProps {
 const STAGE_LABELS: Record<string, string> = {
   parsing: "Parsing File",
   inserting: "Inserting Rows",
+  preview: "Inserting Rows",
   complete: "Complete",
   error: "Error",
 };
@@ -21,6 +22,7 @@ const STAGE_LABELS: Record<string, string> = {
 const STAGE_ICONS: Record<string, string> = {
   parsing: "description",
   inserting: "database",
+  preview: "database",
   complete: "check_circle",
   error: "error",
 };
@@ -34,6 +36,7 @@ function computeOverallProgress(up: UploadProgress): number {
     case "parsing":
       return Math.round((stageP / 100) * 15);
     case "inserting":
+    case "preview":
       return Math.round(15 + (stageP / 100) * 85);
     case "complete":
       return 100;
@@ -61,90 +64,95 @@ export function UploadForm({ onUpload, onCancel, isUploading, uploadProgress }: 
 
   return (
     <div className="space-y-6">
-      <DropZone
-        onFileSelect={handleFileSelect}
-        disabled={isUploading}
-      />
+      {/* Drop zone + file info — hidden once upload starts */}
+      {!isUploading && (
+        <>
+          <DropZone
+            onFileSelect={handleFileSelect}
+            disabled={isUploading}
+          />
 
-      {selectedFile && (
-        <div className="rounded-lg border border-border-light bg-surface-light p-4 dark:border-border-dark dark:bg-surface-dark">
-          <div className="flex items-center justify-between">
-            <div className="flex items-center gap-3">
-              <span className="material-symbols-outlined text-[24px] text-primary">
-                description
-              </span>
-              <div>
-                <p className="text-sm font-medium text-text-primary-light dark:text-text-primary-dark">
-                  {selectedFile.name}
-                </p>
-                <p className="text-xs text-text-secondary-light dark:text-text-secondary-dark">
-                  {selectedFile.size >= 1024 * 1024
-                    ? `${(selectedFile.size / (1024 * 1024)).toFixed(1)} MB`
-                    : `${(selectedFile.size / 1024).toFixed(1)} KB`}
-                </p>
+          {selectedFile && (
+            <div className="rounded-lg border border-border-light bg-surface-light p-4 dark:border-border-dark dark:bg-surface-dark">
+              <div className="flex items-center justify-between">
+                <div className="flex items-center gap-3">
+                  <span className="material-symbols-outlined text-[24px] text-primary">
+                    description
+                  </span>
+                  <div>
+                    <p className="text-sm font-medium text-text-primary-light dark:text-text-primary-dark">
+                      {selectedFile.name}
+                    </p>
+                    <p className="text-xs text-text-secondary-light dark:text-text-secondary-dark">
+                      {selectedFile.size >= 1024 * 1024
+                        ? `${(selectedFile.size / (1024 * 1024)).toFixed(1)} MB`
+                        : `${(selectedFile.size / 1024).toFixed(1)} KB`}
+                    </p>
+                  </div>
+                </div>
+                <div className="flex items-center gap-2">
+                  <Button
+                    variant="ghost"
+                    size="sm"
+                    onClick={() => {
+                      setSelectedFile(null);
+                      setPassword("");
+                      setShowPassword(false);
+                    }}
+                    disabled={isUploading}
+                  >
+                    Remove
+                  </Button>
+                </div>
+              </div>
+
+              {/* Password section */}
+              <div className="mt-4 border-t border-border-light pt-4 dark:border-border-dark">
+                <button
+                  type="button"
+                  className="flex items-center gap-2 text-sm text-text-secondary-light hover:text-text-primary-light dark:text-text-secondary-dark dark:hover:text-text-primary-dark transition-colors"
+                  onClick={() => setShowPassword(!showPassword)}
+                >
+                  <span className="material-symbols-outlined text-[18px]">
+                    {showPassword ? "expand_less" : "expand_more"}
+                  </span>
+                  <span className="material-symbols-outlined text-[18px]">
+                    lock
+                  </span>
+                  File is password-protected?
+                </button>
+                {showPassword && (
+                  <div className="mt-3 max-w-sm">
+                    <Input
+                      type="password"
+                      placeholder="Enter file password"
+                      value={password}
+                      onChange={(e) => setPassword(e.target.value)}
+                      disabled={isUploading}
+                    />
+                    <p className="mt-1 text-xs text-text-secondary-light dark:text-text-secondary-dark">
+                      Leave blank if the file is not encrypted
+                    </p>
+                  </div>
+                )}
+              </div>
+
+              {/* Upload button */}
+              <div className="mt-4 flex justify-end">
+                <Button
+                  size="sm"
+                  onClick={handleUpload}
+                  isLoading={isUploading}
+                >
+                  <span className="material-symbols-outlined text-[16px]">
+                    cloud_upload
+                  </span>
+                  Upload & Parse
+                </Button>
               </div>
             </div>
-            <div className="flex items-center gap-2">
-              <Button
-                variant="ghost"
-                size="sm"
-                onClick={() => {
-                  setSelectedFile(null);
-                  setPassword("");
-                  setShowPassword(false);
-                }}
-                disabled={isUploading}
-              >
-                Remove
-              </Button>
-            </div>
-          </div>
-
-          {/* Password section */}
-          <div className="mt-4 border-t border-border-light pt-4 dark:border-border-dark">
-            <button
-              type="button"
-              className="flex items-center gap-2 text-sm text-text-secondary-light hover:text-text-primary-light dark:text-text-secondary-dark dark:hover:text-text-primary-dark transition-colors"
-              onClick={() => setShowPassword(!showPassword)}
-            >
-              <span className="material-symbols-outlined text-[18px]">
-                {showPassword ? "expand_less" : "expand_more"}
-              </span>
-              <span className="material-symbols-outlined text-[18px]">
-                lock
-              </span>
-              File is password-protected?
-            </button>
-            {showPassword && (
-              <div className="mt-3 max-w-sm">
-                <Input
-                  type="password"
-                  placeholder="Enter file password"
-                  value={password}
-                  onChange={(e) => setPassword(e.target.value)}
-                  disabled={isUploading}
-                />
-                <p className="mt-1 text-xs text-text-secondary-light dark:text-text-secondary-dark">
-                  Leave blank if the file is not encrypted
-                </p>
-              </div>
-            )}
-          </div>
-
-          {/* Upload button */}
-          <div className="mt-4 flex justify-end">
-            <Button
-              size="sm"
-              onClick={handleUpload}
-              isLoading={isUploading}
-            >
-              <span className="material-symbols-outlined text-[16px]">
-                cloud_upload
-              </span>
-              Upload & Parse
-            </Button>
-          </div>
-        </div>
+          )}
+        </>
       )}
 
       {/* Progress bar */}
@@ -178,19 +186,6 @@ export function UploadForm({ onUpload, onCancel, isUploading, uploadProgress }: 
               <span className="text-sm font-semibold text-primary tabular-nums">
                 {overall}%
               </span>
-              {onCancel && uploadProgress.stage !== "complete" && (
-                <Button
-                  variant="ghost"
-                  size="sm"
-                  onClick={onCancel}
-                  className="text-red-500 hover:text-red-600 hover:bg-red-50 dark:hover:bg-red-950"
-                >
-                  <span className="material-symbols-outlined text-[16px]">
-                    close
-                  </span>
-                  Cancel
-                </Button>
-              )}
             </div>
 
             {/* Overall progress bar (never resets) */}
@@ -205,58 +200,22 @@ export function UploadForm({ onUpload, onCancel, isUploading, uploadProgress }: 
               />
             </div>
 
-            {/* Stage steps with labels */}
-            <div className="mt-4 grid grid-cols-2 gap-2 text-[11px]">
-              {(["parsing", "inserting"] as const).map((s, idx) => {
-                const isActive = uploadProgress.stage === s;
-                const isDone =
-                  (s === "parsing" && ["inserting", "complete"].includes(uploadProgress.stage)) ||
-                  (s === "inserting" && uploadProgress.stage === "complete");
-                return (
-                  <div
-                    key={s}
-                    className={`flex flex-col items-center gap-1 rounded-md px-2 py-1.5 ${
-                      isActive
-                        ? "bg-primary/10 dark:bg-primary/20 ring-1 ring-primary/30"
-                        : ""
-                    }`}
-                  >
-                    <div className="flex items-center gap-1">
-                      <span className="text-[10px] font-bold text-text-secondary-light dark:text-text-secondary-dark">
-                        {idx + 1}
-                      </span>
-                      <span
-                        className={`material-symbols-outlined text-[14px] ${
-                          isDone
-                            ? "text-green-500"
-                            : isActive
-                              ? "text-primary"
-                              : "text-text-secondary-light dark:text-text-secondary-dark"
-                        }`}
-                      >
-                        {isDone ? "check_circle" : isActive ? "pending" : "radio_button_unchecked"}
-                      </span>
-                    </div>
-                    <span
-                      className={`text-center leading-tight ${
-                        isActive
-                          ? "text-primary font-semibold"
-                          : isDone
-                            ? "text-green-500 font-medium"
-                            : "text-text-secondary-light dark:text-text-secondary-dark"
-                      }`}
-                    >
-                      {STAGE_LABELS[s]}
-                    </span>
-                    {isActive && uploadProgress.progress >= 0 && (
-                      <span className="text-[10px] tabular-nums text-primary font-medium">
-                        {uploadProgress.progress}%
-                      </span>
-                    )}
-                  </div>
-                );
-              })}
-            </div>
+            {/* Cancel button below progress bar */}
+            {onCancel && uploadProgress.stage !== "complete" && (
+              <div className="mt-2 flex justify-end">
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  onClick={onCancel}
+                  className="text-red-500 hover:text-red-600 hover:bg-red-50 dark:hover:bg-red-950"
+                >
+                  <span className="material-symbols-outlined text-[16px]">
+                    close
+                  </span>
+                  Cancel
+                </Button>
+              </div>
+            )}
           </div>
         );
       })()}

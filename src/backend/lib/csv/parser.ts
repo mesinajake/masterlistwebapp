@@ -27,11 +27,13 @@ export interface CSVParseBatch {
  * Memory footprint: ~batchSize rows + 64 KB read buffer at peak.
  * For a 300 MB CSV with 50K batch size: ~50 MB peak vs ~900 MB+ before.
  *
+ * MEMORY OPTIMIZATION: Accepts Buffer directly (no ArrayBuffer→Buffer copy).
+ *
  * RFC 4180 compliant: handles quoted fields, escaped quotes,
  * embedded newlines, BOM detection, mixed line endings.
  */
 export async function* parseCSVBufferStreaming(
-  buffer: ArrayBuffer,
+  buffer: Buffer | ArrayBuffer,
   fileName: string,
   batchSize: number = 50_000
 ): AsyncGenerator<CSVParseBatch> {
@@ -40,7 +42,9 @@ export async function* parseCSVBufferStreaming(
     throw new BadRequestError("Invalid file type. Expected .csv");
   }
 
-  const fileBuffer = Buffer.from(buffer);
+  // Accept both Buffer and ArrayBuffer for backwards compatibility
+  // If already a Buffer, no copy is made (zero-cost)
+  const fileBuffer = Buffer.isBuffer(buffer) ? buffer : Buffer.from(buffer);
   console.log("[csv-parser:stream] File size:", fileBuffer.length, "bytes");
 
   if (fileBuffer.length > MAX_UPLOAD_SIZE) {

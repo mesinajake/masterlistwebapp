@@ -32,26 +32,26 @@ function UploadContent() {
     reset,
   } = useUpload();
 
-  // Derive initial step from persisted store state so returning
-  // to this page after navigation restores the correct view.
-  const [step, setStep] = useState<"upload" | "preview" | "done">(() =>
-    preview ? "preview" : "upload"
+  // 2-step flow: "upload" → "confirm" → "done"
+  // "upload" = file picker + progress + inline preview (grows with each batch)
+  // "confirm" = final preview + activate button
+  // "done" = success message
+  const [step, setStep] = useState<"upload" | "confirm" | "done">(() =>
+    preview && !isUploading ? "confirm" : "upload"
   );
 
-  // If preview becomes available while the user is on the page
-  // (e.g. upload completes in background), auto-advance to preview.
-  // Auto-advance to preview when upload completes in background
-  // (no toast here — the onSuccess callback handles it)
+  // When upload completes (isUploading goes false while preview exists),
+  // auto-advance to confirm step.
   useEffect(() => {
-    if (preview && step === "upload" && !isUploading) {
-      setStep("preview");
+    if (preview && !isUploading && step === "upload") {
+      setStep("confirm");
     }
-  }, [preview, step, isUploading]);
+  }, [preview, isUploading, step]);
 
   const handleFileSelect = (file: File, password?: string) => {
     upload({ file, password }, {
       onSuccess: () => {
-        setStep("preview");
+        setStep("confirm");
         toast("Upload Complete", {
           style: {
             background: "#F0FDF4",
@@ -105,11 +105,11 @@ function UploadContent() {
           </p>
         </div>
 
-        {/* Steps indicator */}
+        {/* Steps indicator — 2 steps: Upload File → Confirm */}
         <div className="flex items-center gap-4 mb-8">
-          {["Upload File", "Preview Data", "Confirm"].map((label, i) => {
+          {["Upload File", "Confirm"].map((label, i) => {
             const stepIndex =
-              step === "upload" ? 0 : step === "preview" ? 1 : 2;
+              step === "upload" ? 0 : step === "confirm" ? 1 : 2;
             const isActive = i === stepIndex;
             const isComplete = i < stepIndex;
             return (
@@ -134,7 +134,7 @@ function UploadContent() {
                 >
                   {label}
                 </span>
-                {i < 2 && (
+                {i < 1 && (
                   <div className="w-12 h-px bg-border-light dark:bg-border-dark" />
                 )}
               </div>
@@ -144,15 +144,27 @@ function UploadContent() {
 
         {/* Step content */}
         {step === "upload" && (
-          <UploadForm
-            onUpload={handleFileSelect}
-            onCancel={cancelUpload}
-            isUploading={isUploading}
-            uploadProgress={uploadProgress}
-          />
+          <div className="space-y-6">
+            <UploadForm
+              onUpload={handleFileSelect}
+              onCancel={cancelUpload}
+              isUploading={isUploading}
+              uploadProgress={uploadProgress}
+            />
+
+            {/* Inline progressive preview — appears after first batch */}
+            {preview && isUploading && (
+              <PreviewTable
+                columns={preview.columns}
+                rows={preview.preview}
+                totalRows={preview.rowCount}
+                isUploading={true}
+              />
+            )}
+          </div>
         )}
 
-        {step === "preview" && preview && (
+        {step === "confirm" && preview && (
           <div className="space-y-6">
             <PreviewTable
               columns={preview.columns}

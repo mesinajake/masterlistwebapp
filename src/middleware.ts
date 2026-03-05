@@ -2,7 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { verifyJWT } from "@/backend/lib/auth/jwt";
 import { SESSION_COOKIE_NAME } from "@/shared/utils/constants";
 
-const PUBLIC_PATHS = ["/login", "/api/auth/lark", "/api/auth/lark/callback"];
+const PUBLIC_PATHS = ["/login", "/api/auth/lark", "/api/auth/lark/callback", "/api/health"];
 
 export async function middleware(request: NextRequest) {
   const { pathname } = request.nextUrl;

@@ -111,6 +111,7 @@ export function HistoryTable({
                           isLoading={isActivating === upload.id}
                           disabled={isActivating !== null || isDeletingId !== null}
                           aria-label={`Activate ${upload.fileName}`}
+                          className="min-w-[76px]"
                         >
                           Activate
                         </Button>
@@ -121,7 +122,7 @@ export function HistoryTable({
                             onClick={() => onDelete(upload)}
                             isLoading={isDeletingId === upload.id}
                             disabled={isActivating !== null || isDeletingId !== null}
-                            className="text-red-500 hover:text-red-700 hover:bg-red-50 dark:hover:bg-red-900/20"
+                            className="min-w-[62px] text-red-500 hover:text-red-700 hover:bg-red-50 dark:hover:bg-red-900/20"
                             aria-label={`Delete ${upload.fileName}`}
                           >
                             Delete

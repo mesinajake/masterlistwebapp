@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { buildLarkAuthUrl } from "@/backend/lib/lark/oauth";
 import { cookies } from "next/headers";
+import { authRateLimiter } from "@/backend/lib/security/rate-limit";
 
 /**
  * GET /api/auth/lark
@@ -9,6 +10,15 @@ import { cookies } from "next/headers";
  */
 // eslint-disable-next-line @typescript-eslint/no-unused-vars
 export async function GET(_request: NextRequest) {
+  // Rate limit by IP: 10 attempts per minute
+  const ip = _request.headers.get("x-forwarded-for")?.split(",")[0]?.trim()
+    || _request.headers.get("x-real-ip")
+    || "unknown";
+  const rateCheck = authRateLimiter.check(ip);
+  if (!rateCheck.allowed) {
+    const appUrl = process.env.NEXT_PUBLIC_APP_URL || "http://localhost:3000";
+    return NextResponse.redirect(`${appUrl}/login?error=rate_limited`);
+  }
   try {
     const { url, state, codeVerifier } = buildLarkAuthUrl();
 

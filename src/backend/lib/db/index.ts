@@ -13,9 +13,11 @@ function getPool(): Pool {
     }
     _pool = new Pool({
       connectionString,
-      max: 20,
-      idleTimeoutMillis: 30_000,
-      connectionTimeoutMillis: 10_000,
+      max: 20,                        // 20 connections — sufficient for 150 users
+      idleTimeoutMillis: 30_000,      // Close idle connections after 30s
+      connectionTimeoutMillis: 10_000, // Fail if can't connect in 10s
+      statement_timeout: 60_000,       // Kill queries running >60s (safety net)
+      allowExitOnIdle: true,           // Allow process to exit when pool is idle
     });
     // Log pool errors (don't crash the process)
     _pool.on("error", (err) => {

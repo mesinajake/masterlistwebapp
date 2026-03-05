@@ -37,3 +37,6 @@ next-env.d.ts
 
 # local file storage (replaces Supabase Storage)
 /storage/
+
+# PM2 logs
+/logs/

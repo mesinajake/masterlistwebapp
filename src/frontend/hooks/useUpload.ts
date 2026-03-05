@@ -187,6 +187,13 @@ export function useUpload() {
               throw new Error(event.detail || "Upload processing failed");
             }
 
+            // Progressive preview: set preview data as soon as the backend
+            // emits "preview" after the first batch COPY finishes. The upload
+            // stream keeps running — the user sees preview rows immediately.
+            if (event.stage === "preview" && event.data) {
+              setPreview(event.data as UploadPreview);
+            }
+
             if (event.stage === "complete" && event.data) {
               result = event.data as UploadPreview;
             }
@@ -216,6 +223,7 @@ export function useUpload() {
     onSuccess: (data) => {
       setAbortController(null);
       setIsUploading(false);
+      // Update preview with final data (accurate rowCount after all batches)
       setPreview(data);
       queryClient.invalidateQueries({ queryKey: ["master-list"] });
       queryClient.invalidateQueries({ queryKey: ["columns"] });

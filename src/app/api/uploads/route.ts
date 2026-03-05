@@ -10,7 +10,7 @@ import {
   PREVIEW_ROW_COUNT,
   ACCEPTED_EXTENSIONS,
 } from "@/shared/utils/constants";
-import { uploadRateLimiter } from "@/backend/lib/security/rate-limit";
+import { uploadRateLimiter, apiRateLimiter } from "@/backend/lib/security/rate-limit";
 import {
   acquireUploadLock,
   setUploadLockId,
@@ -100,6 +100,25 @@ export async function POST(request: NextRequest) {
     );
   }
 
+  // Validate MIME type (defense-in-depth — don't rely only on extension)
+  const ACCEPTED_MIMES = [
+    "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet", // .xlsx
+    "application/vnd.ms-excel",   // .xls
+    "text/csv",                   // .csv
+    "application/csv",            // .csv (alt)
+    "text/plain",                 // .csv sometimes sent as text/plain
+    "application/octet-stream",   // browser fallback for unknown types
+  ];
+  if (file.type && !ACCEPTED_MIMES.includes(file.type)) {
+    return NextResponse.json(
+      {
+        error: "BAD_REQUEST",
+        message: `Invalid MIME type "${file.type}". Upload a valid Excel (.xlsx/.xls) or CSV file.`,
+      },
+      { status: 400 }
+    );
+  }
+
   const passwordField = formData.get("password");
   const password =
     typeof passwordField === "string" && passwordField.length > 0
@@ -156,11 +175,26 @@ export async function POST(request: NextRequest) {
     });
 
     try {
-      // ── Stage 1: Read file ──────────────────────────────────
+      // ── Stage 1: Read file into a single Buffer ─────────────
+      // MEMORY OPTIMIZATION: Read directly into a Buffer (not ArrayBuffer)
+      // to avoid the extra copy that Buffer.from(arrayBuffer) would create
+      // in the parsers. This single Buffer is shared across storage + parsing.
       const t0 = Date.now();
       await emit("parsing", 0, "Reading file...");
-      const fileArrayBuffer = await file.arrayBuffer();
-      console.log(`[upload:timing] File read: ${Date.now() - t0}ms`);
+
+      let fileBuffer: Buffer;
+      {
+        // Collect chunks from the file stream into a single Buffer
+        const chunks: Buffer[] = [];
+        const stream = file.stream() as unknown as AsyncIterable<Uint8Array>;
+        for await (const chunk of stream) {
+          chunks.push(Buffer.from(chunk));
+        }
+        fileBuffer = Buffer.concat(chunks);
+        // Let the chunks array be GC'd
+        chunks.length = 0;
+      }
+      console.log(`[upload:timing] File read: ${Date.now() - t0}ms (${(fileBuffer.length / 1024 / 1024).toFixed(1)} MB)`);
 
       // Storage upload (small files only — skip for large files)
       const safeName = file.name
@@ -169,7 +203,7 @@ export async function POST(request: NextRequest) {
         .slice(0, 100);
       const storagePath = `uploads/${Date.now()}_${safeName}`;
       if (file.size <= STORAGE_LIMIT) {
-        await uploadFile("master-list-files", storagePath, fileArrayBuffer);
+        await uploadFile("master-list-files", storagePath, fileBuffer);
       }
 
       // ── Stage 2: Stream parse + COPY insert ─────────────────
@@ -187,8 +221,13 @@ export async function POST(request: NextRequest) {
       const isCSV = fileExt === ".csv";
 
       const parser = isCSV
-        ? parseCSVBufferStreaming(fileArrayBuffer, file.name, COPY_BATCH_SIZE)
-        : parseExcelBufferStreaming(fileArrayBuffer, file.name, password, COPY_BATCH_SIZE);
+        ? parseCSVBufferStreaming(fileBuffer, file.name, COPY_BATCH_SIZE)
+        : parseExcelBufferStreaming(fileBuffer, file.name, password, COPY_BATCH_SIZE);
+
+      // Release the file buffer reference — parsers have their own reference now.
+      // This allows GC to reclaim the buffer once parsing is complete.
+      // @ts-expect-error — intentional null assignment for GC
+      fileBuffer = null;
 
       client = await getClient();
       let tCopyTotal = 0;
@@ -246,10 +285,10 @@ export async function POST(request: NextRequest) {
             )
           );
 
-          // Buffered write: accumulate WRITE_BUFFER_SIZE rows into a single
-          // string before calling copyStream.write(). Reduces system call
-          // overhead from 50K write() calls to ~25 per batch.
-          let writeBuffer = "";
+          // Buffered write: accumulate WRITE_BUFFER_SIZE rows into an array
+          // then join once before writing. This avoids O(n²) string concatenation
+          // and reduces GC pressure from intermediate string objects.
+          let bufferParts: string[] = [];
           let bufferedCount = 0;
 
           for (let i = 0; i < parseBatch.batch.length; i++) {
@@ -257,23 +296,25 @@ export async function POST(request: NextRequest) {
             const jsonStr = JSON.stringify(parseBatch.batch[i]);
             // CSV-escape: double all quotes inside the JSON field
             const csvEscaped = jsonStr.replaceAll('"', '""');
-            writeBuffer += `${uploadId},${rowIdx},"${csvEscaped}"\n`;
+            bufferParts.push(`${uploadId},${rowIdx},"${csvEscaped}"\n`);
             bufferedCount++;
 
             // Flush buffer when it reaches WRITE_BUFFER_SIZE rows
             if (bufferedCount >= WRITE_BUFFER_SIZE) {
-              if (!copyStream.write(writeBuffer)) {
+              const chunk = bufferParts.join("");
+              if (!copyStream.write(chunk)) {
                 // Back-pressure: wait for drain before writing more
                 await new Promise<void>((resolve) => copyStream.once("drain", resolve));
               }
-              writeBuffer = "";
+              bufferParts = [];
               bufferedCount = 0;
             }
           }
 
           // Flush remaining rows in the buffer
-          if (writeBuffer) {
-            if (!copyStream.write(writeBuffer)) {
+          if (bufferParts.length > 0) {
+            const chunk = bufferParts.join("");
+            if (!copyStream.write(chunk)) {
               await new Promise<void>((resolve) => copyStream.once("drain", resolve));
             }
           }
@@ -297,6 +338,29 @@ export async function POST(request: NextRequest) {
             pct,
             `Inserted ${totalInserted.toLocaleString()} rows`
           );
+
+          // ── Progressive preview: emit preview data after every batch ──
+          // The first batch sends the actual preview rows (first 10 rows).
+          // Subsequent batches update the rowCount so the frontend total
+          // increments live while the upload continues.
+          if (previewRows.length > 0) {
+            const livePreview = previewRows.slice(0, PREVIEW_ROW_COUNT).map((row) => {
+              const obj: Record<string, string | number | boolean | null> = {};
+              headers.forEach((h, idx) => {
+                obj[h] = row[idx] ?? null;
+              });
+              return obj;
+            });
+
+            await emit("preview", pct, `Inserted ${totalInserted.toLocaleString()} rows`, {
+              uploadId,
+              fileName: file.name,
+              rowCount: totalInserted,
+              columns: headers,
+              preview: livePreview,
+              status: "pending_confirmation",
+            });
+          }
         }
       } finally {
         // Release the pool client regardless of success/failure
@@ -441,10 +505,8 @@ export async function POST(request: NextRequest) {
       const message =
         error instanceof AppError
           ? error.message
-          : error instanceof Error
-            ? error.message
-            : "An unexpected error occurred";
-      console.error("POST /api/uploads error:", message);
+          : "An unexpected error occurred during upload";
+      console.error("POST /api/uploads error:", error instanceof Error ? error.message : error);
 
       try {
         await emit("error", 0, message);
@@ -471,6 +533,15 @@ export async function POST(request: NextRequest) {
 export async function GET(request: NextRequest) {
   const authResult = await requireAuth(request);
   if (!isPayload(authResult)) return authResult;
+
+  // Rate limit: 120 requests per minute per user
+  const rateCheck = apiRateLimiter.check(authResult.sub);
+  if (!rateCheck.allowed) {
+    return NextResponse.json(
+      { error: "RATE_LIMITED", message: "Too many requests. Please slow down." },
+      { status: 429, headers: { "Retry-After": String(Math.ceil(rateCheck.retryAfterMs / 1000)) } }
+    );
+  }
 
   try {
     const { data: uploads, error } = await query<{

@@ -40,8 +40,16 @@ export async function PATCH(request: NextRequest) {
   const auth = await requireSuperAdmin(request);
   if (!isPayload(auth)) return auth;
 
-  const body = await request.json();
-  const { userId, role } = body as { userId?: string; role?: string };
+  let body: { userId?: string; role?: string };
+  try {
+    body = await request.json();
+  } catch {
+    return NextResponse.json(
+      { error: "INVALID_INPUT", message: "Invalid JSON in request body" },
+      { status: 400 }
+    );
+  }
+  const { userId, role } = body;
 
   if (!userId || !role) {
     return NextResponse.json(

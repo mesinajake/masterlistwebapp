@@ -71,6 +71,8 @@ interface MasterListTableProps {
   data: MasterListResponse | undefined;
   columns: string[];
   isLoading: boolean;
+  /** True while a background refetch is in progress (search, pagination, filter) */
+  isFetching?: boolean;
   onExport: () => void;
   isExporting?: boolean;
 }
@@ -79,9 +81,12 @@ export function MasterListTable({
   data,
   columns: columnHeaders,
   isLoading,
+  isFetching = false,
   onExport,
   isExporting,
 }: MasterListTableProps) {
+  // Show overlay when refetching (not initial load — that uses skeleton)
+  const showOverlay = isFetching && !isLoading;
   const { page, filters, setPage, addFilter, removeFilter, clearFilters, setSort } =
     useSearchStore();
   const [showFilters, setShowFilters] = useState(false);
@@ -128,7 +133,7 @@ export function MasterListTable({
   );
 
   const rows = data?.data ?? [];
-  const pagination = data?.pagination ?? { page: 1, pageSize: 25, total: 0, totalPages: 0 };
+  const pagination = data?.pagination ?? { page: 1, pageSize: 50, total: 0, totalPages: 0 };
 
   const table = useReactTable({
     data: rows,
@@ -180,9 +185,24 @@ export function MasterListTable({
       )}
 
       {/* Table Container */}
-      <div className="flex flex-1 flex-col overflow-hidden rounded-xl border border-border-light bg-white shadow-sm dark:border-border-dark dark:bg-bg-dark">
+      <div className="relative flex flex-1 flex-col overflow-hidden rounded-xl border border-border-light bg-white shadow-sm dark:border-border-dark dark:bg-bg-dark">
+        {/* Loading overlay — shown during search/filter/pagination refetches */}
+        {showOverlay && (
+          <div className="absolute inset-0 z-20 flex items-center justify-center bg-white/70 dark:bg-bg-dark/70 backdrop-blur-sm transition-opacity duration-200">
+            <div className="flex flex-col items-center gap-3 rounded-xl bg-white/90 dark:bg-surface-dark/90 px-8 py-6 shadow-lg border border-border-light dark:border-border-dark">
+              <div className="relative h-10 w-10">
+                <div className="absolute inset-0 rounded-full border-4 border-gray-200 dark:border-gray-700" />
+                <div className="absolute inset-0 rounded-full border-4 border-t-primary border-r-transparent border-b-transparent border-l-transparent animate-spin" />
+              </div>
+              <span className="text-sm font-medium text-text-secondary-light dark:text-text-secondary-dark">
+                Loading data...
+              </span>
+            </div>
+          </div>
+        )}
+
         {isLoading ? (
-          <TableSkeleton rows={8} cols={columnHeaders.length || 5} />
+          <TableSkeleton rows={10} cols={columnHeaders.length || 5} />
         ) : rows.length === 0 ? (
           <div className="flex flex-1 items-center justify-center p-12">
             <div className="text-center">

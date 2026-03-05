@@ -38,8 +38,22 @@ export function shouldParseClientSide(fileName: string): boolean {
 }
 
 /**
+ * Maximum file size for client-side parsing (150 MB).
+ * Files larger than this should fall back to server-side parsing
+ * to avoid browser OOM crashes. Client-side parsing creates ~3-4x
+ * the file size in memory (ArrayBuffer + workbook + CSV string).
+ */
+const CLIENT_PARSE_SIZE_LIMIT = 150 * 1024 * 1024;
+
+/**
  * Parse an Excel file client-side and return a CSV blob.
  * Uses SheetJS for fast parsing (3-4x faster than ExcelJS).
+ *
+ * MEMORY MANAGEMENT:
+ * - Files > 150 MB are rejected (caller should fall back to server-side)
+ * - Intermediate references (ArrayBuffer, workbook, sheet) are nulled
+ *   after use to allow GC to reclaim memory sooner
+ * - Peak memory ≈ 3-4x file size (unavoidable with SheetJS)
  *
  * @param file - The Excel file to parse
  * @param password - Optional password for encrypted files
@@ -56,9 +70,17 @@ export async function parseExcelClientSide(
     throw new DOMException("Parsing cancelled", "AbortError");
   }
 
+  // Guard: reject files too large for safe browser parsing
+  if (file.size > CLIENT_PARSE_SIZE_LIMIT) {
+    throw new Error(
+      `File too large for browser parsing (${(file.size / 1024 / 1024).toFixed(0)} MB). ` +
+      `Maximum: ${CLIENT_PARSE_SIZE_LIMIT / 1024 / 1024} MB. Falling back to server.`
+    );
+  }
+
   onProgress?.("Reading file...");
 
-  const buffer = await file.arrayBuffer();
+  let buffer: ArrayBuffer | null = await file.arrayBuffer();
 
   if (signal?.aborted) {
     throw new DOMException("Parsing cancelled", "AbortError");
@@ -80,6 +102,9 @@ export async function parseExcelClientSide(
     password: password,
     dense: true,
   });
+
+  // Release the raw ArrayBuffer — workbook has its own parsed representation now
+  buffer = null;
 
   // Use the first sheet
   const sheetName = workbook.SheetNames[0];
@@ -106,6 +131,13 @@ export async function parseExcelClientSide(
     blankrows: false,
     forceQuotes: true,
   });
+
+  // Release workbook/sheet references — only the CSV string is needed now
+  // (SheetJS workbook can be very large for dense spreadsheets)
+  workbook.SheetNames.length = 0;
+  for (const key of Object.keys(workbook.Sheets)) {
+    delete workbook.Sheets[key];
+  }
 
   // Count rows (approximate)
   let rowCount = 0;

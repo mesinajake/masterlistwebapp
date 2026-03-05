@@ -16,7 +16,7 @@ export default function DashboardPage() {
 }
 
 function DashboardContent() {
-  const { data, isLoading } = useMasterList();
+  const { data, isLoading, isFetching } = useMasterList();
   const { data: columnsData } = useColumns();
   const { exportCSV, isExporting } = useExport();
 
@@ -29,6 +29,7 @@ function DashboardContent() {
           data={data}
           columns={columnsData?.columns ?? []}
           isLoading={isLoading}
+          isFetching={isFetching}
           onExport={exportCSV}
           isExporting={isExporting}
         />

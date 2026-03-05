@@ -28,7 +28,7 @@ const initialState = {
   query: "",
   filters: [] as ColumnFilter[],
   page: 1,
-  pageSize: 25,
+  pageSize: 50,
   sortBy: null as string | null,
   sortOrder: "asc" as const,
 };

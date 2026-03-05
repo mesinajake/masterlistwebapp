@@ -84,3 +84,6 @@ export const uploadRateLimiter = createRateLimiter("upload", 3, 5 * 60 * 1000);
 
 /** API read rate limiter: 120 requests per minute per user */
 export const apiRateLimiter = createRateLimiter("api", 120, 60 * 1000);
+
+/** Auth/OAuth rate limiter: 10 attempts per minute per IP (brute-force protection) */
+export const authRateLimiter = createRateLimiter("auth", 10, 60 * 1000);

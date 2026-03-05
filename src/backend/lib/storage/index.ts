@@ -17,6 +17,7 @@ async function ensureDir(dir: string): Promise<void> {
 /**
  * Upload a file to local storage.
  * Validates the resolved path stays within STORAGE_ROOT to prevent path traversal.
+ * Accepts Buffer directly to avoid unnecessary ArrayBuffer→Buffer copies.
  */
 export async function uploadFile(
   bucket: string,
@@ -30,7 +31,8 @@ export async function uploadFile(
     }
     const fullDir = path.dirname(fullPath);
     await ensureDir(fullDir);
-    const buffer = data instanceof ArrayBuffer ? Buffer.from(data) : data;
+    // Use Buffer directly if provided — avoids an extra copy
+    const buffer = Buffer.isBuffer(data) ? data : Buffer.from(data);
     await fs.writeFile(fullPath, buffer);
     return { error: null };
   } catch (err) {

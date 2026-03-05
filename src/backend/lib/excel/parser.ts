@@ -162,13 +162,16 @@ function normalizeCellValue(
  * Yields batches of rows as they are parsed, enabling concurrent
  * parse + insert instead of loading all rows into memory first.
  *
- * @param buffer – raw file bytes
+ * MEMORY OPTIMIZATION: Accepts Buffer directly (no ArrayBuffer→Buffer copy).
+ * After decryption, the original buffer reference is released for GC.
+ *
+ * @param buffer – raw file bytes (Buffer or ArrayBuffer)
  * @param fileName – original filename (for validation)
  * @param password – optional password for encrypted files
  * @param batchSize – rows per batch (default 10,000)
  */
 export async function* parseExcelBufferStreaming(
-  buffer: ArrayBuffer,
+  buffer: Buffer | ArrayBuffer,
   fileName: string,
   password?: string,
   batchSize: number = 10_000
@@ -180,8 +183,8 @@ export async function* parseExcelBufferStreaming(
     );
   }
 
-  // Convert to Buffer for officecrypto-tool compatibility
-  let fileBuffer = Buffer.from(buffer);
+  // Accept both Buffer and ArrayBuffer — no copy if already a Buffer
+  let fileBuffer = Buffer.isBuffer(buffer) ? buffer : Buffer.from(buffer);
 
   console.log("[parser:stream] File size:", fileBuffer.length, "bytes");
 
@@ -198,6 +201,8 @@ export async function* parseExcelBufferStreaming(
     try {
       console.log("[parser:stream] Attempting decryption...");
       const decryptedBuf = await officeCrypto.decrypt(fileBuffer, { password });
+      // MEMORY OPTIMIZATION: Replace the buffer with decrypted version.
+      // The assignment to fileBuffer releases the old encrypted buffer for GC.
       fileBuffer = Buffer.from(decryptedBuf);
       console.log("[parser:stream] Decryption successful, size:", fileBuffer.length, "bytes");
     } catch (decryptError) {
