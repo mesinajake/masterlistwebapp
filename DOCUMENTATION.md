@@ -162,10 +162,13 @@ masterlist-app/
 ├── .env.local                    # Environment variables (gitignored)
 ├── .env.example                  # Template for environment setup
 ├── .gitignore                    # Git ignore rules
+├── ecosystem.config.js           # PM2 process manager configuration
 ├── next.config.mjs               # Next.js configuration + security headers
 ├── package.json                  # Dependencies and scripts
 ├── tailwind.config.ts            # Tailwind CSS configuration
 ├── tsconfig.json                 # TypeScript configuration
+├── README.md                     # Project overview & quick start
+├── DOCUMENTATION.md              # Full software documentation (this file)
 │
 ├── scripts/
 │   └── init_db.sql               # Database initialization script
@@ -220,6 +223,8 @@ masterlist-app/
     │       └── admin/
     │           ├── users/route.ts         # GET/PATCH — user management
     │           └── activity/route.ts      # GET — activity log
+    │       └── health/
+    │           └── route.ts              # GET — public health check
     │
     ├── backend/                  # Server-only code (never sent to browser)
     │   └── lib/
